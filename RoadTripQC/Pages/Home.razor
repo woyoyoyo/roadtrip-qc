@@ -28,10 +28,30 @@ else
                 <span>@FrenchDate.Range(Store.OrderedDays[0].Date, Store.OrderedDays[^1].Date)</span>
             }
         </div>
-        <button class="action-btn btn-refresh" @onclick="ReloadAsync">🔄 Actualiser</button>
+
+        @switch (Store.Source)
+        {
+            case DataSource.Gist:
+                <div class="sync-status sync-ok">✅ Synchronisé @SyncTime</div>
+                break;
+            case DataSource.Cache:
+                <div class="sync-status sync-offline">📵 Hors ligne — données synchronisées @SyncTime</div>
+                break;
+            case DataSource.Demo:
+                <div class="sync-status sync-demo">🧪 Données de démo — <a href="parametres">configurer l'app</a></div>
+                break;
+        }
+        @if (Store.LoadError is not null && Store.Data is not null)
+        {
+            <div class="sync-status sync-warn">⚠️ @Store.LoadError</div>
+        }
+
+        <button class="action-btn btn-refresh" @onclick="ReloadAsync" disabled="@_reloading">
+            @(_reloading ? "⏳ Actualisation…" : "🔄 Actualiser")
+        </button>
     </header>
 
-    @foreach (var part in Store.Data.Parts.OrderBy(p => p.DateStart))
+    @foreach (var part in Store.Data!.Parts.OrderBy(p => p.DateStart))
     {
         <div class="part-banner part-@part.Id">
             <span class="part-emoji">@part.Emoji</span>
@@ -49,6 +69,11 @@ else
 }
 
 @code {
+    private bool _reloading;
+
+    private string SyncTime =>
+        Store.LastSync is { } d ? $"le {d:dd/MM} à {d:HH\\hmm}" : "";
+
     protected override async Task OnInitializedAsync()
     {
         await Store.EnsureLoadedAsync();
@@ -56,6 +81,8 @@ else
 
     private async Task ReloadAsync()
     {
+        _reloading = true;
         await Store.ReloadAsync();
+        _reloading = false;
     }
 }

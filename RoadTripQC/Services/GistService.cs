@@ -26,6 +26,15 @@ public class GistService(HttpClient http)
     /// </summary>
     public async Task<TripData?> LoadAsync(string gistId, string? token = null)
     {
+        var content = await LoadContentAsync(gistId, token);
+        return content is null
+            ? null
+            : JsonSerializer.Deserialize<TripData>(content, JsonOpts);
+    }
+
+    /// <summary>Contenu JSON brut du Gist (utile pour le cache localStorage).</summary>
+    public async Task<string?> LoadContentAsync(string gistId, string? token = null)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Get, ApiBase + gistId);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         if (!string.IsNullOrWhiteSpace(token))
@@ -37,10 +46,7 @@ public class GistService(HttpClient http)
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var content = ExtractFileContent(doc.RootElement);
-        return content is null
-            ? null
-            : JsonSerializer.Deserialize<TripData>(content, JsonOpts);
+        return ExtractFileContent(doc.RootElement);
     }
 
     /// <summary>
