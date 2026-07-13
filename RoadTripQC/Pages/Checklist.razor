@@ -1,0 +1,63 @@
+@page "/checklist"
+@inject TripStore Store
+
+<PageTitle>RoadTrip QC — Checklist</PageTitle>
+
+<header class="page-header">
+    <h1>✅ Checklist</h1>
+</header>
+
+@if (Store.Data is null)
+{
+    <div class="loading-message">Chargement…</div>
+}
+else if (Store.Data.Checklist.Count == 0)
+{
+    <div class="empty-message">Rien dans la checklist 🎉</div>
+}
+else
+{
+    @foreach (var group in GroupedItems)
+    {
+        <h2 class="checklist-group">@PriorityLabel(group.Key)</h2>
+        @foreach (var item in group)
+        {
+            <label class="checklist-item @(item.Done ? "is-done" : "")">
+                <input type="checkbox" checked="@item.Done" @onchange="e => Toggle(item, e)" />
+                <span class="checklist-text">@item.Task</span>
+                @if (!string.IsNullOrWhiteSpace(item.Url))
+                {
+                    <a class="action-btn btn-web checklist-link" href="@item.Url" target="_blank" rel="noopener">🌐</a>
+                }
+            </label>
+        }
+    }
+    <p class="checklist-hint">La sauvegarde des coches arrivera avec le Sprint 5 (édition).</p>
+}
+
+@code {
+    private static readonly string[] PriorityOrder = ["haute", "moyenne", "basse"];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Store.EnsureLoadedAsync();
+    }
+
+    private IEnumerable<IGrouping<string, ChecklistItem>> GroupedItems =>
+        Store.Data!.Checklist
+            .OrderBy(i => Array.IndexOf(PriorityOrder, i.Priority))
+            .GroupBy(i => i.Priority);
+
+    private static string PriorityLabel(string priority) => priority switch
+    {
+        "haute" => "🚨 Priorité haute",
+        "moyenne" => "🔸 Priorité moyenne",
+        _ => "🔹 Un jour peut-être"
+    };
+
+    private void Toggle(ChecklistItem item, ChangeEventArgs e)
+    {
+        item.Done = e.Value is true;
+        // Sprint 5 : déclencher la sauvegarde vers le Gist ici.
+    }
+}

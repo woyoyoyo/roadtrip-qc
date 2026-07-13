@@ -1,0 +1,73 @@
+<details class="day-card @(Day.Status == "free" ? "day-free" : "")" open="@IsToday" id="day-@Day.Date.ToString("yyyy-MM-dd")">
+    <summary class="day-summary">
+        <div class="day-summary-main">
+            <span class="day-number">J@(DayNumber)</span>
+            <div class="day-summary-text">
+                <span class="day-date">@FrenchDate.Long(Day.Date)</span>
+                <span class="day-title">@Day.Title</span>
+            </div>
+        </div>
+        <div class="day-badges">
+            @if (IsToday)
+            {
+                <span class="badge badge-today">Aujourd'hui</span>
+            }
+            @if (Day.Status == "free")
+            {
+                <span class="badge badge-free">Journée libre</span>
+            }
+            @if (Day.Offline)
+            {
+                <span class="badge badge-offline">📵</span>
+            }
+            @if (AlertCount > 0)
+            {
+                <span class="badge badge-alert">🚨 @AlertCount</span>
+            }
+        </div>
+    </summary>
+
+    <div class="day-body">
+        @foreach (var activity in SortedActivities)
+        {
+            <ActivityCard Activity="activity" />
+        }
+
+        @if (Day.Notes.Count > 0)
+        {
+            <div class="day-notes">
+                @foreach (var note in Day.Notes)
+                {
+                    <div class="day-note">💡 @note</div>
+                }
+            </div>
+        }
+
+        @if (Day.Accommodation is not null)
+        {
+            <AccommodationCard Accommodation="Day.Accommodation" />
+        }
+        else if (Day.Status == "free")
+        {
+            <div class="no-accommodation">🛏️ Pas d'hébergement réservé pour cette nuit</div>
+        }
+    </div>
+</details>
+
+@code {
+    [Parameter, EditorRequired]
+    public TripDay Day { get; set; } = default!;
+
+    [Parameter]
+    public int DayNumber { get; set; }
+
+    private bool IsToday => Day.Date == DateOnly.FromDateTime(DateTime.Now);
+
+    private int AlertCount => Day.Activities.Count(a => a.Alert);
+
+    /// <summary>Éléments "toute la journée" (time null) d'abord, puis tri par heure.</summary>
+    private IEnumerable<Activity> SortedActivities =>
+        Day.Activities
+            .OrderBy(a => a.Time is not null)
+            .ThenBy(a => a.Time, StringComparer.Ordinal);
+}

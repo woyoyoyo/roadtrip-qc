@@ -1,0 +1,61 @@
+<div class="accommodation-card">
+    <div class="acc-head">
+        <span class="acc-icon">🛏️</span>
+        <span class="acc-name">@Accommodation.Name</span>
+        @if (!string.IsNullOrWhiteSpace(Accommodation.Night))
+        {
+            <span class="acc-night">Nuit @Accommodation.Night</span>
+        }
+    </div>
+
+    <div class="acc-details">
+        @if (!string.IsNullOrWhiteSpace(Accommodation.Address))
+        {
+            <div class="acc-line">📍 @Accommodation.Address</div>
+        }
+        @if (Accommodation.Checkin is not null || Accommodation.Checkout is not null)
+        {
+            <div class="acc-line">
+                🕒
+                @if (Accommodation.Checkin is not null)
+                {
+                    <span>Check-in @Accommodation.Checkin</span>
+                }
+                @if (Accommodation.Checkout is not null)
+                {
+                    <span>@(Accommodation.Checkin is not null ? " · " : "")Check-out @Accommodation.Checkout</span>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Accommodation.Host))
+        {
+            <div class="acc-line">👤 @Accommodation.Host</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Accommodation.BookingRef))
+        {
+            <div class="acc-line">🎫 @Accommodation.BookingRef</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Accommodation.Notes))
+        {
+            <div class="acc-line acc-notes">ℹ️ @Accommodation.Notes</div>
+        }
+    </div>
+
+    <div class="activity-actions">
+        @if (!string.IsNullOrWhiteSpace(Accommodation.MapUrl))
+        {
+            <a class="action-btn btn-map" href="@Accommodation.MapUrl" target="_blank" rel="noopener">🗺️ Maps</a>
+        }
+        @if (!string.IsNullOrWhiteSpace(Accommodation.Phone))
+        {
+            <a class="action-btn btn-tel" href="@TelHref">📞 Hôte</a>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Accommodation Accommodation { get; set; } = default!;
+
+    private string TelHref => "tel:" + Accommodation.Phone.Replace(" ", "");
+}

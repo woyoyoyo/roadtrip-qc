@@ -1,0 +1,69 @@
+{
+  "trip": {
+    "name": "Démo — RoadTrip QC",
+    "travelers": ["Alice", "Bob"],
+    "timezone": "America/Toronto",
+    "currency": "CAD",
+    "lastUpdated": "2026-07-13T12:00:00Z"
+  },
+  "checklist": [
+    { "id": "c-01", "task": "Réserver la croisière (exemple, priorité haute)", "done": false, "priority": "haute", "url": "https://example.com" },
+    { "id": "c-02", "task": "Télécharger les cartes offline (exemple)", "done": true, "priority": "haute", "url": "" },
+    { "id": "c-03", "task": "Acheter des carottes 🥕 (exemple, priorité basse)", "done": false, "priority": "basse", "url": "" }
+  ],
+  "parts": [
+    { "id": 1, "emoji": "🛫", "title": "Première partie (démo)", "dateStart": "2026-08-27", "dateEnd": "2026-08-28" },
+    { "id": 2, "emoji": "🌲", "title": "Deuxième partie (démo)", "dateStart": "2026-08-29", "dateEnd": "2026-08-29" }
+  ],
+  "days": [
+    {
+      "date": "2026-08-27",
+      "partId": 1,
+      "title": "Journée d'exemple complète",
+      "status": "confirmed",
+      "offline": false,
+      "notes": ["Une note de journée, avec un lien à caler"],
+      "accommodation": {
+        "name": "Studio d'exemple",
+        "address": "123 Rue Exemple, Montréal",
+        "mapUrl": "https://maps.google.com/?q=Montréal",
+        "checkin": "15:00",
+        "checkout": null,
+        "night": "1/2",
+        "host": "Hôte Démo",
+        "phone": "+1 555-000-0000",
+        "bookingRef": "DEMO12345",
+        "notes": "Entrée autonome par serrure numérique"
+      },
+      "activities": [
+        { "id": "d-1", "time": null, "type": "alerte", "title": "Rappel toute la journée (alerte)", "description": "Un élément sans heure s'affiche en tête de journée", "location": "", "mapUrl": "", "websiteUrl": "", "phone": "", "bookingRef": "", "price": "", "alert": true, "status": "confirme" },
+        { "id": "d-2", "time": "09:30", "type": "transport", "title": "Un transport", "description": "Avec une description et un bouton Maps", "location": "Quelque part", "mapUrl": "https://maps.google.com/?q=Montréal", "websiteUrl": "", "phone": "", "bookingRef": "REF-001", "price": "", "alert": false, "status": "confirme" },
+        { "id": "d-3", "time": "12:00", "type": "resto", "title": "Un resto", "description": "", "location": "Vieux-Montréal", "mapUrl": "https://maps.google.com/?q=Vieux-Montréal", "websiteUrl": "https://example.com", "phone": "+1 555-111-1111", "bookingRef": "", "price": "~40 $", "alert": false, "status": "confirme" },
+        { "id": "d-4", "time": "15:00", "type": "activite", "title": "Une activité à réserver", "description": "Le liseré orange indique le statut à-réserver", "location": "", "mapUrl": "", "websiteUrl": "https://example.com", "phone": "+1 555-222-2222", "bookingRef": "", "price": "77 $/adulte", "alert": false, "status": "a-reserver" },
+        { "id": "d-5", "time": "18:00", "type": "activite", "title": "Une suggestion", "description": "Affichée estompée en pointillés", "location": "", "mapUrl": "", "websiteUrl": "", "phone": "", "bookingRef": "", "price": "", "alert": false, "status": "suggestion" }
+      ]
+    },
+    {
+      "date": "2026-08-28",
+      "partId": 1,
+      "title": "Journée libre d'exemple",
+      "status": "free",
+      "offline": true,
+      "notes": ["Journée libre + zone sans réseau : les deux badges s'affichent"],
+      "accommodation": null,
+      "activities": []
+    },
+    {
+      "date": "2026-08-29",
+      "partId": 2,
+      "title": "Journée avec alerte horaire",
+      "status": "confirmed",
+      "offline": false,
+      "notes": [],
+      "accommodation": null,
+      "activities": [
+        { "id": "d-6", "time": "11:00", "type": "alerte", "title": "Check-out avant 11h", "description": "Les alertes ressortent en rouge", "location": "", "mapUrl": "", "websiteUrl": "", "phone": "", "bookingRef": "", "price": "", "alert": true, "status": "confirme" }
+      ]
+    }
+  ]
+}

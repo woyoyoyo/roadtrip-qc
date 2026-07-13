@@ -1,7 +1,61 @@
-﻿@page "/"
+@page "/"
+@inject TripStore Store
 
-<PageTitle>Home</PageTitle>
+<PageTitle>RoadTrip QC — Planning</PageTitle>
 
-<h1>Hello, world!</h1>
+@if (Store.Data is null)
+{
+    @if (Store.LoadError is not null)
+    {
+        <div class="load-error">
+            <p>⚠️ Impossible de charger le planning.</p>
+            <p class="error-detail">@Store.LoadError</p>
+            <button class="action-btn btn-refresh" @onclick="ReloadAsync">🔄 Réessayer</button>
+        </div>
+    }
+    else
+    {
+        <div class="loading-message">Chargement du planning…</div>
+    }
+}
+else
+{
+    <header class="page-header">
+        <h1>@Store.Data.Trip.Name</h1>
+        <div class="trip-sub">
+            @if (Store.OrderedDays.Count > 0)
+            {
+                <span>@FrenchDate.Range(Store.OrderedDays[0].Date, Store.OrderedDays[^1].Date)</span>
+            }
+        </div>
+        <button class="action-btn btn-refresh" @onclick="ReloadAsync">🔄 Actualiser</button>
+    </header>
 
-Welcome to your new app.
+    @foreach (var part in Store.Data.Parts.OrderBy(p => p.DateStart))
+    {
+        <div class="part-banner part-@part.Id">
+            <span class="part-emoji">@part.Emoji</span>
+            <div class="part-text">
+                <span class="part-title">@part.Title</span>
+                <span class="part-dates">@FrenchDate.Range(part.DateStart, part.DateEnd)</span>
+            </div>
+        </div>
+
+        @foreach (var day in Store.OrderedDays.Where(d => d.PartId == part.Id))
+        {
+            <DaySection Day="day" DayNumber="Store.DayNumber(day)" />
+        }
+    }
+}
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await Store.EnsureLoadedAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await Store.ReloadAsync();
+    }
+}
