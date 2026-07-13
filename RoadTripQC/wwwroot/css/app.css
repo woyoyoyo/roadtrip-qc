@@ -565,6 +565,68 @@ html, body {
 }
 
 /* --------------------------------------------------------------------------
+   Formulaire Paramètres
+   -------------------------------------------------------------------------- */
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-label {
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.form-input {
+    min-height: 48px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 0 14px;
+    font-size: 15px;
+    background: var(--color-card);
+    color: var(--color-text);
+    user-select: text;
+}
+
+.form-input:focus {
+    outline: 2px solid var(--color-primary);
+    border-color: transparent;
+}
+
+.form-hint {
+    font-size: 12px;
+    color: var(--color-text-soft);
+}
+
+.show-token {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--color-text-soft);
+}
+
+.show-token input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary);
+}
+
+.btn-clear {
+    background: var(--color-bg);
+    color: var(--color-text-soft);
+    border: 1px solid var(--color-border);
+}
+
+/* --------------------------------------------------------------------------
    Divers : messages, paramètres
    -------------------------------------------------------------------------- */
 
