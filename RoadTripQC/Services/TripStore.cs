@@ -37,6 +37,12 @@ public class TripStore(
     /// <summary>Date de la dernière synchro réussie avec le Gist.</summary>
     public DateTimeOffset? LastSync { get; private set; }
 
+    /// <summary>Déclenché quand Data change (reload ou sauvegarde) — pour rafraîchir l'UI.</summary>
+    public event Action? Changed;
+
+    /// <summary>La sauvegarde nécessite : Gist + token configurés (l'état réseau est vérifié au moment de sauver).</summary>
+    public bool CanEdit => settings.CanSave && Source != DataSource.Demo;
+
     public async Task EnsureLoadedAsync()
     {
         if (Data is null)
@@ -66,6 +72,7 @@ public class TripStore(
                     LastSync = DateTimeOffset.Now;
                     await storage.SetAsync(CacheKey, content);
                     await storage.SetAsync(CacheDateKey, LastSync.Value.ToString("O"));
+                    Changed?.Invoke();
                     return;
                 }
                 LoadError = "Le Gist est vide — colle le roadtrip.json dedans.";
@@ -78,10 +85,62 @@ public class TripStore(
 
         // Hors-ligne ou échec réseau : on lit silencieusement le cache.
         if (await LoadFromCacheAsync())
+        {
+            Changed?.Invoke();
             return;
+        }
 
         // Pas de cache non plus : dernier recours, la démo (avec l'erreur affichée).
         await LoadDemoAsync();
+    }
+
+    /// <summary>
+    /// Sauvegarde sûre (fetch-avant-PATCH) : re-télécharge la dernière version du Gist,
+    /// applique la modification dessus, puis pousse le tout. Évite d'écraser une
+    /// modification faite par l'autre téléphone avec une copie locale périmée.
+    /// </summary>
+    /// <param name="applyChange">Modification à appliquer sur les données fraîches.
+    /// Retourne false pour annuler (ex : cible introuvable).</param>
+    public async Task<(bool Ok, string? Error)> SaveAsync(Func<TripData, bool> applyChange)
+    {
+        await settings.EnsureLoadedAsync();
+
+        if (!settings.IsConfigured || settings.Token is null)
+            return (false, "Token GitHub manquant — configure-le dans Paramètres.");
+
+        if (!await IsOnlineAsync())
+            return (false, "Hors ligne — modification impossible sans réseau.");
+
+        try
+        {
+            var content = await gist.LoadContentAsync(settings.GistId!, settings.Token);
+            var fresh = string.IsNullOrWhiteSpace(content)
+                ? null
+                : JsonSerializer.Deserialize<TripData>(content, GistService.JsonOpts);
+
+            if (fresh is null)
+                return (false, "Impossible de relire le Gist avant la sauvegarde.");
+
+            if (!applyChange(fresh))
+                return (false, "Modification impossible sur la dernière version des données.");
+
+            fresh.Trip.LastUpdated = DateTime.UtcNow;
+            var json = JsonSerializer.Serialize(fresh, GistService.JsonOpts);
+
+            await gist.SaveContentAsync(settings.GistId!, settings.Token, json);
+
+            Data = fresh;
+            Source = DataSource.Gist;
+            LastSync = DateTimeOffset.Now;
+            await storage.SetAsync(CacheKey, json);
+            await storage.SetAsync(CacheDateKey, LastSync.Value.ToString("O"));
+            Changed?.Invoke();
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     private async Task<bool> LoadFromCacheAsync()
@@ -111,6 +170,7 @@ public class TripStore(
         {
             Data = await http.GetFromJsonAsync<TripData>("sample-data/trip-demo.json", GistService.JsonOpts);
             Source = DataSource.Demo;
+            Changed?.Invoke();
         }
         catch (Exception ex)
         {
@@ -118,7 +178,7 @@ public class TripStore(
         }
     }
 
-    private async Task<bool> IsOnlineAsync()
+    public async Task<bool> IsOnlineAsync()
     {
         try
         {

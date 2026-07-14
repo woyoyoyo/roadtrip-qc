@@ -565,6 +565,52 @@ html, body {
 }
 
 /* --------------------------------------------------------------------------
+   Ajout d'étape
+   -------------------------------------------------------------------------- */
+
+.btn-add {
+    background: var(--color-card);
+    color: var(--color-primary);
+    border: 2px dashed var(--color-primary);
+}
+
+.add-form {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.add-form-row {
+    display: flex;
+    gap: 10px;
+}
+
+.form-time {
+    flex: 0 0 118px;
+}
+
+.form-grow {
+    flex: 1;
+}
+
+.add-form-actions {
+    display: flex;
+    gap: 8px;
+}
+
+select.form-input {
+    appearance: none;
+}
+
+.checklist-item.is-busy {
+    opacity: 0.6;
+}
+
+/* --------------------------------------------------------------------------
    Formulaire Paramètres
    -------------------------------------------------------------------------- */
 

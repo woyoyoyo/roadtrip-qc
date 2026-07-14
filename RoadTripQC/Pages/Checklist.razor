@@ -1,4 +1,5 @@
 @page "/checklist"
+@implements IDisposable
 @inject TripStore Store
 
 <PageTitle>RoadTrip QC — Checklist</PageTitle>
@@ -17,13 +18,23 @@ else if (Store.Data.Checklist.Count == 0)
 }
 else
 {
+    @if (_error is not null)
+    {
+        <div class="sync-status sync-warn">⚠️ @_error</div>
+    }
+    @if (Store.Source == DataSource.Demo)
+    {
+        <div class="sync-status sync-demo">🧪 Mode démo — les coches ne sont pas sauvegardées.</div>
+    }
+
     @foreach (var group in GroupedItems)
     {
         <h2 class="checklist-group">@PriorityLabel(group.Key)</h2>
         @foreach (var item in group)
         {
-            <label class="checklist-item @(item.Done ? "is-done" : "")">
-                <input type="checkbox" checked="@item.Done" @onchange="e => Toggle(item, e)" />
+            <label class="checklist-item @(item.Done ? "is-done" : "") @(_busyId == item.Id ? "is-busy" : "")">
+                <input type="checkbox" checked="@item.Done" disabled="@(_busyId is not null)"
+                       @onchange="e => ToggleAsync(item, e)" />
                 <span class="checklist-text">@item.Task</span>
                 @if (!string.IsNullOrWhiteSpace(item.Url))
                 {
@@ -32,16 +43,23 @@ else
             </label>
         }
     }
-    <p class="checklist-hint">La sauvegarde des coches arrivera avec le Sprint 5 (édition).</p>
 }
 
 @code {
     private static readonly string[] PriorityOrder = ["haute", "moyenne", "basse"];
 
+    private string? _error;
+    private string? _busyId;
+
     protected override async Task OnInitializedAsync()
     {
+        Store.Changed += OnStoreChanged;
         await Store.EnsureLoadedAsync();
     }
+
+    public void Dispose() => Store.Changed -= OnStoreChanged;
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
 
     private IEnumerable<IGrouping<string, ChecklistItem>> GroupedItems =>
         Store.Data!.Checklist
@@ -55,9 +73,30 @@ else
         _ => "🔹 Un jour peut-être"
     };
 
-    private void Toggle(ChecklistItem item, ChangeEventArgs e)
+    private async Task ToggleAsync(ChecklistItem item, ChangeEventArgs e)
     {
-        item.Done = e.Value is true;
-        // Sprint 5 : déclencher la sauvegarde vers le Gist ici.
+        var done = e.Value is true;
+        _error = null;
+
+        // Mode démo : coche locale, sans sauvegarde.
+        if (Store.Source == DataSource.Demo)
+        {
+            item.Done = done;
+            return;
+        }
+
+        _busyId = item.Id;
+        var (ok, error) = await Store.SaveAsync(data =>
+        {
+            var target = data.Checklist.FirstOrDefault(c => c.Id == item.Id);
+            if (target is null)
+                return false;
+            target.Done = done;
+            return true;
+        });
+        _busyId = null;
+
+        if (!ok)
+            _error = error;
     }
 }

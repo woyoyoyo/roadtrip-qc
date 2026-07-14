@@ -1,0 +1,144 @@
+@inject TripStore Store
+
+@if (!_open)
+{
+    <button class="action-btn btn-add" @onclick="OpenAsync">➕ Ajouter une étape</button>
+    @if (_hint is not null)
+    {
+        <div class="sync-status sync-warn">@_hint</div>
+    }
+}
+else
+{
+    <div class="add-form">
+        <div class="add-form-row">
+            <label class="form-field form-time">
+                <span class="form-label">Heure</span>
+                <input class="form-input" type="time" @bind="_time" />
+            </label>
+            <label class="form-field form-grow">
+                <span class="form-label">Type</span>
+                <select class="form-input" @bind="_type">
+                    <option value="activite">🎟️ Activité</option>
+                    <option value="resto">🍽️ Resto</option>
+                    <option value="transport">🚗 Transport</option>
+                    <option value="hebergement">🛏️ Hébergement</option>
+                    <option value="alerte">🚨 Alerte</option>
+                    <option value="note">📝 Note</option>
+                </select>
+            </label>
+        </div>
+
+        <label class="form-field">
+            <span class="form-label">Titre *</span>
+            <input class="form-input" type="text" @bind="_title" placeholder="ex : Resto conseillé par l'hôte" />
+        </label>
+
+        <label class="form-field">
+            <span class="form-label">Lieu</span>
+            <input class="form-input" type="text" @bind="_location" placeholder="ex : 123 Rue Machin, Tadoussac" />
+        </label>
+
+        <label class="form-field">
+            <span class="form-label">Lien Maps</span>
+            <input class="form-input" type="url" @bind="_mapUrl" placeholder="https://maps.google.com/?q=..." autocapitalize="off" />
+        </label>
+
+        @if (_error is not null)
+        {
+            <div class="sync-status sync-warn">⚠️ @_error</div>
+        }
+
+        <div class="add-form-actions">
+            <button class="action-btn btn-clear" @onclick="Close" disabled="@_busy">Annuler</button>
+            <button class="action-btn btn-refresh" @onclick="SaveAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_title))">
+                @(_busy ? "⏳ Sauvegarde…" : "💾 Enregistrer")
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public DateOnly Date { get; set; }
+
+    private bool _open;
+    private bool _busy;
+    private string? _error;
+    private string? _hint;
+
+    private TimeOnly? _time;
+    private string _type = "activite";
+    private string? _title;
+    private string? _location;
+    private string? _mapUrl;
+
+    private async Task OpenAsync()
+    {
+        _hint = null;
+
+        if (!Store.CanEdit)
+        {
+            _hint = "✏️ Édition indisponible : configure le Gist et le token dans Paramètres.";
+            return;
+        }
+        if (!await Store.IsOnlineAsync())
+        {
+            _hint = "📵 Modification impossible hors connexion.";
+            return;
+        }
+        _open = true;
+    }
+
+    private void Close()
+    {
+        _open = false;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _error = null;
+
+        var activity = new Activity
+        {
+            Id = $"a-{Guid.NewGuid():N}"[..14],
+            Time = _time?.ToString("HH:mm"),
+            Type = _type,
+            Title = _title!.Trim(),
+            Location = _location?.Trim() ?? "",
+            MapUrl = _mapUrl?.Trim() ?? "",
+            Status = "confirme"
+        };
+
+        var (ok, error) = await Store.SaveAsync(data =>
+        {
+            var day = data.Days.FirstOrDefault(d => d.Date == Date);
+            if (day is null)
+                return false;
+
+            day.Activities.Add(activity);
+            day.Activities = day.Activities
+                .OrderBy(a => a.Time is not null)
+                .ThenBy(a => a.Time, StringComparer.Ordinal)
+                .ToList();
+            return true;
+        });
+
+        _busy = false;
+
+        if (ok)
+        {
+            _open = false;
+            _time = null;
+            _title = null;
+            _location = null;
+            _mapUrl = null;
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+}

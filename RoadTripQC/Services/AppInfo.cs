@@ -6,5 +6,5 @@ namespace RoadTripQC.Services;
 /// </summary>
 public static class AppInfo
 {
-    public const string Version = "0.4.0 (Sprint 4)";
+    public const string Version = "0.5.0 (Sprint 5)";
 }
