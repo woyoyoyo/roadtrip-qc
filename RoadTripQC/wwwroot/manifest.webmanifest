@@ -6,8 +6,8 @@
   "display": "standalone",
   "orientation": "portrait",
   "lang": "fr",
-  "background_color": "#f4f5f7",
-  "theme_color": "#0b6e4f",
+  "background_color": "#f6f2ea",
+  "theme_color": "#14532d",
   "prefer_related_applications": false,
   "icons": [
     {
