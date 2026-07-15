@@ -1,3 +1,5 @@
+@inject TripStore Store
+
 <div class="activity-card type-@Activity.Type status-@Activity.Status @(Activity.Alert ? "is-alert" : "")">
     <div class="activity-head">
         <span class="activity-icon">@TypeEmoji</span>
@@ -10,6 +12,10 @@
             <span class="activity-time all-day">Journée</span>
         }
         <span class="activity-title">@Activity.Title</span>
+        @if (Store.CanEdit && !_confirming)
+        {
+            <button class="btn-delete-icon" @onclick="ToggleConfirm" title="Supprimer">🗑️</button>
+        }
     </div>
 
     @if (!string.IsNullOrWhiteSpace(Activity.Description))
@@ -40,35 +46,78 @@
         }
     </div>
 
-    @if (HasActions)
+    @if (_confirming)
     {
-        <div class="activity-actions">
-            @if (!string.IsNullOrWhiteSpace(Activity.MapUrl))
+        <div class="delete-confirm">
+            <span class="delete-confirm-text">Supprimer « @Activity.Title » ?</span>
+            <div class="delete-confirm-actions">
+                <button class="action-btn btn-clear" @onclick="ToggleConfirm" disabled="@_busy">Annuler</button>
+                <button class="action-btn btn-delete-yes" @onclick="DeleteAsync" disabled="@_busy">
+                    @(_busy ? "⏳…" : "🗑️ Supprimer")
+                </button>
+            </div>
+            @if (_error is not null)
             {
-                <a class="action-btn btn-map" href="@Activity.MapUrl" target="_blank" rel="noopener">🗺️ Maps</a>
-            }
-            @if (!string.IsNullOrWhiteSpace(Activity.WebsiteUrl))
-            {
-                <a class="action-btn btn-web" href="@Activity.WebsiteUrl" target="_blank" rel="noopener">🌐 Site</a>
-            }
-            @if (!string.IsNullOrWhiteSpace(Activity.Phone))
-            {
-                <a class="action-btn btn-tel" href="@TelHref">📞 Appeler</a>
+                <div class="sync-status sync-warn">⚠️ @_error</div>
             }
         </div>
     }
+
+    <div class="activity-actions">
+        @if (!string.IsNullOrWhiteSpace(Activity.MapUrl))
+        {
+            <a class="action-btn btn-map" href="@Activity.MapUrl" target="_blank" rel="noopener">🗺️ Maps</a>
+        }
+        @if (!string.IsNullOrWhiteSpace(Activity.WebsiteUrl))
+        {
+            <a class="action-btn btn-web" href="@Activity.WebsiteUrl" target="_blank" rel="noopener">🌐 Site</a>
+        }
+        @if (!string.IsNullOrWhiteSpace(Activity.Phone))
+        {
+            <a class="action-btn btn-tel" href="@TelHref">📞 Appeler</a>
+        }
+        @if (Date != DateOnly.MinValue)
+        {
+            <a class="action-btn btn-cal" href="@CalendarHref" target="_blank" rel="noopener">📅 Agenda</a>
+        }
+    </div>
 </div>
 
 @code {
     [Parameter, EditorRequired]
     public Activity Activity { get; set; } = default!;
 
+    [Parameter]
+    public DateOnly Date { get; set; }
+
+    private bool _confirming;
+    private bool _busy;
+    private string? _error;
+
     private string TelHref => "tel:" + Activity.Phone.Replace(" ", "");
 
-    private bool HasActions =>
-        !string.IsNullOrWhiteSpace(Activity.MapUrl)
-        || !string.IsNullOrWhiteSpace(Activity.WebsiteUrl)
-        || !string.IsNullOrWhiteSpace(Activity.Phone);
+    private string CalendarHref
+    {
+        get
+        {
+            var title = Uri.EscapeDataString(Activity.Title);
+            var location = Uri.EscapeDataString(Activity.Location);
+            var details = Uri.EscapeDataString(Activity.Description);
+            string dates;
+            if (Activity.Time is not null && TimeOnly.TryParse(Activity.Time, out var t))
+            {
+                var start = Date.ToDateTime(t);
+                var end = start.AddHours(1);
+                dates = $"{start:yyyyMMddTHHmmss}/{end:yyyyMMddTHHmmss}";
+            }
+            else
+            {
+                var next = Date.AddDays(1);
+                dates = $"{Date:yyyyMMdd}/{next:yyyyMMdd}";
+            }
+            return $"https://calendar.google.com/calendar/render?action=TEMPLATE&text={title}&dates={dates}&location={location}&details={details}";
+        }
+    }
 
     private string TypeEmoji => Activity.Type switch
     {
@@ -79,4 +128,31 @@
         "alerte" => "🚨",
         _ => "📝"
     };
+
+    private void ToggleConfirm()
+    {
+        _confirming = !_confirming;
+        _error = null;
+    }
+
+    private async Task DeleteAsync()
+    {
+        _busy = true;
+        _error = null;
+        var id = Activity.Id;
+        var date = Date;
+
+        var (ok, error) = await Store.SaveAsync(data =>
+        {
+            var day = data.Days.FirstOrDefault(d => d.Date == date);
+            if (day is null) return false;
+            return day.Activities.RemoveAll(a => a.Id == id) > 0;
+        });
+
+        _busy = false;
+        if (ok)
+            _confirming = false;
+        else
+            _error = error;
+    }
 }

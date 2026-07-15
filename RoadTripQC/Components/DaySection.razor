@@ -30,7 +30,7 @@
     <div class="day-body">
         @foreach (var activity in SortedActivities)
         {
-            <ActivityCard Activity="activity" />
+            <ActivityCard Activity="activity" Date="Day.Date" />
         }
 
         @if (Day.Notes.Count > 0)
@@ -53,6 +53,7 @@
         }
 
         <AddActivityForm Date="Day.Date" />
+        <PasteActivitiesForm Date="Day.Date" />
     </div>
 </details>
 

@@ -1,0 +1,189 @@
+@inject TripStore Store
+@inject IJSRuntime JS
+
+@if (!Store.CanEdit)
+{
+    @* Bouton masqué si non configuré *@
+}
+else if (!_open)
+{
+    <button class="btn-paste-ia" @onclick="OpenAsync">📋 Coller depuis l'IA</button>
+    @if (_hint is not null)
+    {
+        <div class="sync-status sync-warn">@_hint</div>
+    }
+}
+else
+{
+    <div class="add-form">
+        <p class="form-hint paste-help">
+            Colle le JSON renvoyé par Gemini ou ChatGPT.
+            <button class="link-btn" @onclick="CopyPromptAsync">💡 Copier le prompt</button>
+        </p>
+
+        <textarea class="form-input paste-textarea"
+                  @bind="_json" @bind:event="oninput"
+                  placeholder='[{"time":"10:00","type":"activite","title":"..."}]'></textarea>
+
+        @if (_preview is not null)
+        {
+            <div class="sync-status sync-ok">✅ @_preview.Count étape(s) prête(s) à importer</div>
+        }
+        @if (_error is not null)
+        {
+            <div class="sync-status sync-warn">⚠️ @_error</div>
+        }
+
+        <div class="add-form-actions">
+            <button class="action-btn btn-clear" @onclick="Close" disabled="@_busy">Annuler</button>
+            @if (_preview is null)
+            {
+                <button class="action-btn btn-web" @onclick="Parse"
+                        disabled="@string.IsNullOrWhiteSpace(_json)">
+                    Analyser
+                </button>
+            }
+            else
+            {
+                <button class="action-btn btn-refresh" @onclick="ImportAsync" disabled="@_busy">
+                    @(_busy ? "⏳ Sauvegarde…" : $"💾 Importer ({_preview.Count})")
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public DateOnly Date { get; set; }
+
+    private bool _open;
+    private bool _busy;
+    private string? _hint;
+    private string? _error;
+    private string? _json;
+    private List<Activity>? _preview;
+
+    private static readonly string GeminiPrompt =
+        "Génère des activités pour ma journée au Québec sous forme de tableau JSON.\n" +
+        "Utilise exactement ce format pour chaque activité :\n" +
+        "[{\"time\":\"HH:mm ou null si journée entière\",\"type\":\"activite|resto|transport|alerte|note\",\"title\":\"nom court\",\"description\":\"détails (optionnel)\",\"location\":\"lieu\",\"mapUrl\":\"lien Google Maps (optionnel)\",\"websiteUrl\":\"site officiel (optionnel)\",\"status\":\"confirme|suggestion|a-reserver\"}]\n" +
+        "Réponds uniquement avec le tableau JSON, sans aucune explication.";
+
+    private async Task OpenAsync()
+    {
+        _hint = null;
+        if (!await Store.IsOnlineAsync())
+        {
+            _hint = "📵 Modification impossible hors connexion.";
+            return;
+        }
+        _open = true;
+    }
+
+    private void Close()
+    {
+        _open = false;
+        _json = null;
+        _preview = null;
+        _error = null;
+        _hint = null;
+    }
+
+    private async Task CopyPromptAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("roadtrip.copyText", GeminiPrompt);
+        }
+        catch { /* clipboard non disponible */ }
+    }
+
+    private void Parse()
+    {
+        _error = null;
+        _preview = null;
+
+        if (string.IsNullOrWhiteSpace(_json))
+            return;
+
+        try
+        {
+            var json = _json.Trim();
+
+            // Retire les balises markdown ```json ... ```
+            if (json.StartsWith("```"))
+            {
+                var end = json.IndexOf("```", 3);
+                json = end > 0 ? json[3..end].Trim() : json[3..].Trim();
+                if (json.StartsWith("json", StringComparison.OrdinalIgnoreCase))
+                    json = json[4..].Trim();
+            }
+
+            // Un seul objet → on l'emballe dans un tableau
+            if (json.StartsWith("{"))
+                json = $"[{json}]";
+
+            var items = JsonSerializer.Deserialize<List<JsonElement>>(json);
+            if (items is null || items.Count == 0)
+            {
+                _error = "JSON vide ou invalide.";
+                return;
+            }
+
+            _preview = items.Select((el, i) => new Activity
+            {
+                Id = $"a-{Guid.NewGuid():N}"[..14],
+                Time = GetString(el, "time"),
+                Type = GetString(el, "type") ?? "note",
+                Title = GetString(el, "title") ?? $"Étape {i + 1}",
+                Description = GetString(el, "description") ?? "",
+                Location = GetString(el, "location") ?? "",
+                MapUrl = GetString(el, "mapUrl") ?? "",
+                WebsiteUrl = GetString(el, "websiteUrl") ?? "",
+                Status = GetString(el, "status") ?? "confirme",
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"JSON invalide : {ex.Message}";
+        }
+    }
+
+    private static string? GetString(JsonElement el, string key)
+    {
+        if (el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
+            return v.GetString();
+        return null;
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_preview is null || _preview.Count == 0)
+            return;
+
+        _busy = true;
+        _error = null;
+        var activities = _preview;
+        var date = Date;
+
+        var (ok, error) = await Store.SaveAsync(data =>
+        {
+            var day = data.Days.FirstOrDefault(d => d.Date == date);
+            if (day is null) return false;
+
+            day.Activities.AddRange(activities);
+            day.Activities = day.Activities
+                .OrderBy(a => a.Time is not null)
+                .ThenBy(a => a.Time, StringComparer.Ordinal)
+                .ToList();
+            return true;
+        });
+
+        _busy = false;
+        if (ok)
+            Close();
+        else
+            _error = error;
+    }
+}
