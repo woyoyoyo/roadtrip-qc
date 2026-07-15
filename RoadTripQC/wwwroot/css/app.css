@@ -903,6 +903,48 @@ select.form-input {
 }
 
 /* --------------------------------------------------------------------------
+   Partage de journée
+   -------------------------------------------------------------------------- */
+
+.btn-share-day {
+    background: none;
+    border: none;
+    padding: 4px 6px;
+    font-size: 15px;
+    cursor: pointer;
+    opacity: 0.45;
+    flex-shrink: 0;
+    border-radius: 6px;
+}
+
+.btn-share-day:active {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.06);
+}
+
+/* --------------------------------------------------------------------------
+   Export PDF — boutons dans l'en-tête
+   -------------------------------------------------------------------------- */
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.header-actions .btn-refresh {
+    flex: 1;
+    width: auto;
+}
+
+.btn-print {
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    color: #fff;
+    flex: 0 0 auto;
+    padding: 0 18px;
+}
+
+/* --------------------------------------------------------------------------
    Coller depuis l'IA
    -------------------------------------------------------------------------- */
 
@@ -941,4 +983,85 @@ select.form-input {
     font-size: 13px;
     font-family: monospace;
     user-select: text;
+}
+
+/* --------------------------------------------------------------------------
+   Export PDF — impression
+   -------------------------------------------------------------------------- */
+
+@media print {
+    /* Éléments interactifs masqués */
+    .no-print,
+    .bottom-nav,
+    .sync-status,
+    .btn-card-icon,
+    .btn-add,
+    .btn-paste-ia,
+    .btn-share-day,
+    .delete-confirm,
+    .add-form { display: none !important; }
+
+    /* Mise en page */
+    html, body { background: #fff; }
+
+    .app-content {
+        padding: 8px;
+        max-width: 100%;
+        padding-bottom: 8px;
+    }
+
+    /* En-tête : force les couleurs */
+    .page-header {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        border-radius: 4px;
+        margin-bottom: 10px;
+    }
+
+    /* Bandeaux d'étapes */
+    .part-banner {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        border-radius: 4px;
+        break-after: avoid;
+    }
+
+    /* Cartes de jours : ouvrir le contenu même si <details> est fermé */
+    details.day-card > .day-body {
+        display: flex !important;
+    }
+
+    .day-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin-bottom: 6px;
+        border-radius: 4px;
+    }
+
+    .activity-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    /* Boutons d'action (Maps / Tel / Agenda) : texte pur en impression */
+    .activity-actions {
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 4px;
+    }
+
+    .action-btn {
+        background: none !important;
+        color: var(--color-text-soft) !important;
+        border: none !important;
+        padding: 0 4px !important;
+        min-height: auto !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+    }
+
+    /* Chaque étape de la partie sur une nouvelle page si c'est grand */
+    .part-banner:not(:first-child) {
+        break-before: auto;
+    }
 }

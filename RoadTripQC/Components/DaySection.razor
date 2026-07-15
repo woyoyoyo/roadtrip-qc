@@ -1,3 +1,5 @@
+@inject IJSRuntime JS
+
 <details class="day-card @(Day.Status == "free" ? "day-free" : "")" open="@IsToday" id="day-@Day.Date.ToString("yyyy-MM-dd")">
     <summary class="day-summary">
         <div class="day-summary-main">
@@ -24,6 +26,10 @@
             {
                 <span class="badge badge-alert">🚨 @AlertCount</span>
             }
+            <button class="btn-share-day no-print"
+                    @onclick="ShareAsync"
+                    @onclick:stopPropagation="true"
+                    title="Partager ce jour">📤</button>
         </div>
     </summary>
 
@@ -65,12 +71,72 @@
     public int DayNumber { get; set; }
 
     private bool IsToday => Day.Date == DateOnly.FromDateTime(DateTime.Now);
-
     private int AlertCount => Day.Activities.Count(a => a.Alert);
 
-    /// <summary>Éléments "toute la journée" (time null) d'abord, puis tri par heure.</summary>
     private IEnumerable<Activity> SortedActivities =>
         Day.Activities
             .OrderBy(a => a.Time is not null)
             .ThenBy(a => a.Time, StringComparer.Ordinal);
+
+    private async Task ShareAsync()
+    {
+        var text = BuildShareText();
+        try
+        {
+            await JS.InvokeVoidAsync("roadtrip.shareText", text);
+        }
+        catch { /* share non supporté ou annulé */ }
+    }
+
+    private string BuildShareText()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"📅 {FrenchDate.Long(Day.Date)} — {Day.Title}");
+        if (Day.Offline) sb.AppendLine("📵 Zone blanche probable");
+        sb.AppendLine();
+
+        foreach (var a in SortedActivities)
+        {
+            var emoji = a.Type switch
+            {
+                "transport"   => "🚗",
+                "activite"    => "🎟️",
+                "resto"       => "🍽️",
+                "hebergement" => "🛏️",
+                "alerte"      => "🚨",
+                _             => "📝"
+            };
+            var time = a.Time is not null ? $"{a.Time}  " : "Journée  ";
+            sb.AppendLine($"{emoji} {time}{a.Title}");
+            if (!string.IsNullOrWhiteSpace(a.Location))
+                sb.AppendLine($"  📍 {a.Location}");
+            if (!string.IsNullOrWhiteSpace(a.Description))
+                sb.AppendLine($"  ℹ️ {a.Description}");
+        }
+
+        if (Day.Notes.Count > 0)
+        {
+            sb.AppendLine();
+            foreach (var note in Day.Notes)
+                sb.AppendLine($"💡 {note}");
+        }
+
+        if (Day.Accommodation is not null)
+        {
+            var acc = Day.Accommodation;
+            sb.AppendLine();
+            sb.Append($"🛏️ Nuit : {acc.Name}");
+            if (!string.IsNullOrWhiteSpace(acc.Night)) sb.Append($" ({acc.Night})");
+            sb.AppendLine();
+            if (!string.IsNullOrWhiteSpace(acc.Address))  sb.AppendLine($"  📍 {acc.Address}");
+            if (!string.IsNullOrWhiteSpace(acc.Phone))    sb.AppendLine($"  📞 {acc.Phone}");
+            if (!string.IsNullOrWhiteSpace(acc.BookingRef)) sb.AppendLine($"  🎫 {acc.BookingRef}");
+            if (acc.Checkin is not null)  sb.AppendLine($"  🔑 Arrivée {acc.Checkin}");
+            if (acc.Checkout is not null) sb.AppendLine($"  🚪 Départ {acc.Checkout}");
+        }
+
+        sb.AppendLine();
+        sb.Append("— RoadTrip QC 🍁");
+        return sb.ToString().Trim();
+    }
 }
