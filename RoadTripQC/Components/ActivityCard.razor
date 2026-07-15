@@ -1,87 +1,160 @@
 @inject TripStore Store
 
-<div class="activity-card type-@Activity.Type status-@Activity.Status @(Activity.Alert ? "is-alert" : "")">
-    <div class="activity-head">
-        <span class="activity-icon">@TypeEmoji</span>
-        @if (Activity.Time is not null)
+@if (_editing)
+{
+    <div class="add-form edit-form">
+        <div class="add-form-row">
+            <label class="form-field form-time">
+                <span class="form-label">Heure</span>
+                <input class="form-input" type="time" @bind="_eTime" />
+            </label>
+            <label class="form-field form-grow">
+                <span class="form-label">Type</span>
+                <select class="form-input" @bind="_eType">
+                    <option value="activite">🎟️ Activité</option>
+                    <option value="resto">🍽️ Resto</option>
+                    <option value="transport">🚗 Transport</option>
+                    <option value="hebergement">🛏️ Hébergement</option>
+                    <option value="alerte">🚨 Alerte</option>
+                    <option value="note">📝 Note</option>
+                </select>
+            </label>
+        </div>
+
+        <label class="form-field">
+            <span class="form-label">Titre *</span>
+            <input class="form-input" type="text" @bind="_eTitle" />
+        </label>
+
+        <label class="form-field">
+            <span class="form-label">Description</span>
+            <input class="form-input" type="text" @bind="_eDesc" />
+        </label>
+
+        <label class="form-field">
+            <span class="form-label">Lieu</span>
+            <input class="form-input" type="text" @bind="_eLocation" />
+        </label>
+
+        <label class="form-field">
+            <span class="form-label">Lien Maps</span>
+            <input class="form-input" type="url" @bind="_eMapUrl" autocapitalize="off" />
+        </label>
+
+        <label class="form-field">
+            <span class="form-label">Site web</span>
+            <input class="form-input" type="url" @bind="_eWebUrl" autocapitalize="off" />
+        </label>
+
+        <label class="form-field">
+            <span class="form-label">Statut</span>
+            <select class="form-input" @bind="_eStatus">
+                <option value="confirme">✅ Confirmé</option>
+                <option value="suggestion">💡 Suggestion</option>
+                <option value="a-reserver">📌 À réserver</option>
+            </select>
+        </label>
+
+        @if (_error is not null)
         {
-            <span class="activity-time">@Activity.Time</span>
+            <div class="sync-status sync-warn">⚠️ @_error</div>
         }
-        else
-        {
-            <span class="activity-time all-day">Journée</span>
-        }
-        <span class="activity-title">@Activity.Title</span>
-        @if (Store.CanEdit && !_confirming)
-        {
-            <button class="btn-delete-icon" @onclick="ToggleConfirm" title="Supprimer">🗑️</button>
-        }
+
+        <div class="add-form-actions">
+            <button class="action-btn btn-clear" @onclick="CancelEdit" disabled="@_busy">Annuler</button>
+            <button class="action-btn btn-refresh" @onclick="SaveEditAsync"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_eTitle))">
+                @(_busy ? "⏳ Sauvegarde…" : "💾 Enregistrer")
+            </button>
+        </div>
     </div>
-
-    @if (!string.IsNullOrWhiteSpace(Activity.Description))
-    {
-        <p class="activity-desc">@Activity.Description</p>
-    }
-
-    <div class="activity-meta">
-        @if (!string.IsNullOrWhiteSpace(Activity.Location))
-        {
-            <span class="meta-item">📍 @Activity.Location</span>
-        }
-        @if (!string.IsNullOrWhiteSpace(Activity.Price))
-        {
-            <span class="meta-item">💰 @Activity.Price</span>
-        }
-        @if (!string.IsNullOrWhiteSpace(Activity.BookingRef))
-        {
-            <span class="meta-item">🎫 @Activity.BookingRef</span>
-        }
-        @if (Activity.Status == "a-reserver")
-        {
-            <span class="meta-item badge-reserver">À réserver</span>
-        }
-        @if (Activity.Status == "suggestion")
-        {
-            <span class="meta-item badge-suggestion">Suggestion</span>
-        }
-    </div>
-
-    @if (_confirming)
-    {
-        <div class="delete-confirm">
-            <span class="delete-confirm-text">Supprimer « @Activity.Title » ?</span>
-            <div class="delete-confirm-actions">
-                <button class="action-btn btn-clear" @onclick="ToggleConfirm" disabled="@_busy">Annuler</button>
-                <button class="action-btn btn-delete-yes" @onclick="DeleteAsync" disabled="@_busy">
-                    @(_busy ? "⏳…" : "🗑️ Supprimer")
-                </button>
-            </div>
-            @if (_error is not null)
+}
+else
+{
+    <div class="activity-card type-@Activity.Type status-@Activity.Status @(Activity.Alert ? "is-alert" : "")">
+        <div class="activity-head">
+            <span class="activity-icon">@TypeEmoji</span>
+            @if (Activity.Time is not null)
             {
-                <div class="sync-status sync-warn">⚠️ @_error</div>
+                <span class="activity-time">@Activity.Time</span>
+            }
+            else
+            {
+                <span class="activity-time all-day">Journée</span>
+            }
+            <span class="activity-title">@Activity.Title</span>
+            @if (Store.CanEdit && !_confirming)
+            {
+                <button class="btn-card-icon" @onclick="OpenEdit" title="Modifier">✏️</button>
+                <button class="btn-card-icon" @onclick="ToggleConfirm" title="Supprimer">🗑️</button>
             }
         </div>
-    }
 
-    <div class="activity-actions">
-        @if (!string.IsNullOrWhiteSpace(Activity.MapUrl))
+        @if (!string.IsNullOrWhiteSpace(Activity.Description))
         {
-            <a class="action-btn btn-map" href="@Activity.MapUrl" target="_blank" rel="noopener">🗺️ Maps</a>
+            <p class="activity-desc">@Activity.Description</p>
         }
-        @if (!string.IsNullOrWhiteSpace(Activity.WebsiteUrl))
+
+        <div class="activity-meta">
+            @if (!string.IsNullOrWhiteSpace(Activity.Location))
+            {
+                <span class="meta-item">📍 @Activity.Location</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Activity.Price))
+            {
+                <span class="meta-item">💰 @Activity.Price</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Activity.BookingRef))
+            {
+                <span class="meta-item">🎫 @Activity.BookingRef</span>
+            }
+            @if (Activity.Status == "a-reserver")
+            {
+                <span class="meta-item badge-reserver">À réserver</span>
+            }
+            @if (Activity.Status == "suggestion")
+            {
+                <span class="meta-item badge-suggestion">Suggestion</span>
+            }
+        </div>
+
+        @if (_confirming)
         {
-            <a class="action-btn btn-web" href="@Activity.WebsiteUrl" target="_blank" rel="noopener">🌐 Site</a>
+            <div class="delete-confirm">
+                <span class="delete-confirm-text">Supprimer « @Activity.Title » ?</span>
+                <div class="delete-confirm-actions">
+                    <button class="action-btn btn-clear" @onclick="ToggleConfirm" disabled="@_busy">Annuler</button>
+                    <button class="action-btn btn-delete-yes" @onclick="DeleteAsync" disabled="@_busy">
+                        @(_busy ? "⏳…" : "🗑️ Supprimer")
+                    </button>
+                </div>
+                @if (_error is not null)
+                {
+                    <div class="sync-status sync-warn">⚠️ @_error</div>
+                }
+            </div>
         }
-        @if (!string.IsNullOrWhiteSpace(Activity.Phone))
-        {
-            <a class="action-btn btn-tel" href="@TelHref">📞 Appeler</a>
-        }
-        @if (Date != DateOnly.MinValue)
-        {
-            <a class="action-btn btn-cal" href="@CalendarHref" target="_blank" rel="noopener">📅 Agenda</a>
-        }
+
+        <div class="activity-actions">
+            @if (!string.IsNullOrWhiteSpace(Activity.MapUrl))
+            {
+                <a class="action-btn btn-map" href="@Activity.MapUrl" target="_blank" rel="noopener">🗺️ Maps</a>
+            }
+            @if (!string.IsNullOrWhiteSpace(Activity.WebsiteUrl))
+            {
+                <a class="action-btn btn-web" href="@Activity.WebsiteUrl" target="_blank" rel="noopener">🌐 Site</a>
+            }
+            @if (!string.IsNullOrWhiteSpace(Activity.Phone))
+            {
+                <a class="action-btn btn-tel" href="@TelHref">📞 Appeler</a>
+            }
+            @if (Date != DateOnly.MinValue)
+            {
+                <a class="action-btn btn-cal" href="@CalendarHref" target="_blank" rel="noopener">📅 Agenda</a>
+            }
+        </div>
     </div>
-</div>
+}
 
 @code {
     [Parameter, EditorRequired]
@@ -90,9 +163,21 @@
     [Parameter]
     public DateOnly Date { get; set; }
 
+    // --- état global ---
     private bool _confirming;
+    private bool _editing;
     private bool _busy;
     private string? _error;
+
+    // --- champs du formulaire d'édition ---
+    private TimeOnly? _eTime;
+    private string _eType = "";
+    private string? _eTitle;
+    private string? _eDesc;
+    private string? _eLocation;
+    private string? _eMapUrl;
+    private string? _eWebUrl;
+    private string _eStatus = "confirme";
 
     private string TelHref => "tel:" + Activity.Phone.Replace(" ", "");
 
@@ -128,6 +213,71 @@
         "alerte" => "🚨",
         _ => "📝"
     };
+
+    private void OpenEdit()
+    {
+        _eTime = Activity.Time is not null && TimeOnly.TryParse(Activity.Time, out var t) ? t : null;
+        _eType = Activity.Type;
+        _eTitle = Activity.Title;
+        _eDesc = Activity.Description;
+        _eLocation = Activity.Location;
+        _eMapUrl = Activity.MapUrl;
+        _eWebUrl = Activity.WebsiteUrl;
+        _eStatus = Activity.Status;
+        _error = null;
+        _editing = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _error = null;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        _busy = true;
+        _error = null;
+        var id = Activity.Id;
+        var date = Date;
+        var time = _eTime?.ToString("HH:mm");
+        var type = _eType;
+        var title = _eTitle!.Trim();
+        var desc = _eDesc?.Trim() ?? "";
+        var location = _eLocation?.Trim() ?? "";
+        var mapUrl = _eMapUrl?.Trim() ?? "";
+        var webUrl = _eWebUrl?.Trim() ?? "";
+        var status = _eStatus;
+
+        var (ok, error) = await Store.SaveAsync(data =>
+        {
+            var day = data.Days.FirstOrDefault(d => d.Date == date);
+            if (day is null) return false;
+            var act = day.Activities.FirstOrDefault(a => a.Id == id);
+            if (act is null) return false;
+
+            act.Time = time;
+            act.Type = type;
+            act.Title = title;
+            act.Description = desc;
+            act.Location = location;
+            act.MapUrl = mapUrl;
+            act.WebsiteUrl = webUrl;
+            act.Status = status;
+
+            day.Activities = day.Activities
+                .OrderBy(a => a.Time is not null)
+                .ThenBy(a => a.Time, StringComparer.Ordinal)
+                .ToList();
+            return true;
+        });
+
+        _busy = false;
+        if (ok)
+            _editing = false;
+        else
+            _error = error;
+    }
 
     private void ToggleConfirm()
     {

@@ -826,10 +826,30 @@ select.form-input {
 }
 
 /* --------------------------------------------------------------------------
-   Suppression d'activité
+   Compte à rebours
    -------------------------------------------------------------------------- */
 
-.btn-delete-icon {
+.trip-countdown {
+    font-size: 19px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: 0.01em;
+    margin-bottom: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   Modification d'activité (formulaire inline)
+   -------------------------------------------------------------------------- */
+
+.edit-form {
+    border: 2px solid var(--color-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Boutons icônes (✏️ 🗑️) dans l'en-tête de carte
+   -------------------------------------------------------------------------- */
+
+.btn-card-icon {
     background: none;
     border: none;
     padding: 4px 6px;
@@ -841,7 +861,7 @@ select.form-input {
     border-radius: 6px;
 }
 
-.btn-delete-icon:active {
+.btn-card-icon:active {
     opacity: 1;
     background: var(--color-alert-soft);
 }

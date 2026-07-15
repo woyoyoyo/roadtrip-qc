@@ -29,6 +29,10 @@ else
                 <span>@FrenchDate.Range(Store.OrderedDays[0].Date, Store.OrderedDays[^1].Date)</span>
             }
         </div>
+        @if (CountdownText is not null)
+        {
+            <div class="trip-countdown">@CountdownText</div>
+        }
 
         @switch (Store.Source)
         {
@@ -74,6 +78,31 @@ else
 
     private string SyncTime =>
         Store.LastSync is { } d ? $"le {d:dd/MM} à {d:HH\\hmm}" : "";
+
+    private string? CountdownText
+    {
+        get
+        {
+            if (Store.OrderedDays.Count == 0) return null;
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var departure = Store.OrderedDays[0].Date;
+            var returnDate = Store.OrderedDays[^1].Date;
+
+            if (today < departure)
+            {
+                var days = departure.DayNumber - today.DayNumber;
+                return days == 1 ? "Départ demain 🛫" : $"J-{days} avant le départ 🛫";
+            }
+            if (today <= returnDate)
+            {
+                var day = today.DayNumber - departure.DayNumber + 1;
+                var total = returnDate.DayNumber - departure.DayNumber + 1;
+                var left = returnDate.DayNumber - today.DayNumber;
+                return left == 0 ? $"Jour {day}/{total} — dernier jour 🍁" : $"Jour {day}/{total} — encore {left} jour{(left > 1 ? "s" : "")} 🍁";
+            }
+            return "Voyage terminé — à bientôt ! 🍁";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
