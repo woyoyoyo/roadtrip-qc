@@ -196,4 +196,12 @@ public class TripStore(
 
     public int DayNumber(TripDay day) =>
         OrderedDays.ToList().FindIndex(d => d.Date == day.Date) + 1;
+
+    /// <summary>Étape/région par identifiant (Montréal / Fjord / Mauricie…).</summary>
+    public TripPart? PartById(int? id) =>
+        id is null ? null : Data?.Parts.FirstOrDefault(p => p.Id == id);
+
+    /// <summary>Contact par identifiant.</summary>
+    public Contact? ContactById(string? id) =>
+        id is null ? null : Data?.Contacts.FirstOrDefault(c => c.Id == id);
 }

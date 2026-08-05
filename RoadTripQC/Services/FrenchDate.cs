@@ -21,5 +21,13 @@ public static class FrenchDate
     public static string Range(DateOnly start, DateOnly end) =>
         $"{DayNumber(start)} {Months[start.Month - 1]} – {DayNumber(end)} {Months[end.Month - 1]}";
 
+    /// <summary>Ex : "27 août" (jour + mois, sans le jour de la semaine).</summary>
+    public static string Short(DateOnly d) =>
+        $"{DayNumber(d)} {Months[d.Month - 1]}";
+
+    /// <summary>Ex : "jeu. 27 août" — court avec abréviation du jour.</summary>
+    public static string ShortDow(DateOnly d) =>
+        $"{Days[(int)d.DayOfWeek][..3]}. {DayNumber(d)} {Months[d.Month - 1]}";
+
     private static string DayNumber(DateOnly d) => d.Day == 1 ? "1er" : d.Day.ToString();
 }

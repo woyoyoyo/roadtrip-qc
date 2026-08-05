@@ -8,11 +8,15 @@ public class SettingsService(LocalStorageService storage)
 {
     private const string GistIdKey = "rtqc.gistId";
     private const string TokenKey = "rtqc.token";
+    private const string GeminiKeyKey = "rtqc.geminiKey";
+    private const string GeminiModelKey = "rtqc.geminiModel";
 
     private bool _loaded;
 
     public string? GistId { get; private set; }
     public string? Token { get; private set; }
+    public string? GeminiApiKey { get; private set; }
+    public string GeminiModel { get; private set; } = "gemini-3.1-flash-lite";
 
     /// <summary>Le token n'est pas requis pour lire, seulement pour sauvegarder.</summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(GistId);
@@ -24,7 +28,22 @@ public class SettingsService(LocalStorageService storage)
             return;
         GistId = await storage.GetAsync(GistIdKey);
         Token = await storage.GetAsync(TokenKey);
+        GeminiApiKey = await storage.GetAsync(GeminiKeyKey);
+        GeminiModel = await storage.GetAsync(GeminiModelKey) ?? GeminiModel;
         _loaded = true;
+    }
+
+    public async Task SetGeminiApiKeyAsync(string? key)
+    {
+        GeminiApiKey = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
+        if (GeminiApiKey is null) await storage.RemoveAsync(GeminiKeyKey);
+        else await storage.SetAsync(GeminiKeyKey, GeminiApiKey);
+    }
+
+    public async Task SetGeminiModelAsync(string model)
+    {
+        GeminiModel = string.IsNullOrWhiteSpace(model) ? "gemini-3.1-flash-lite" : model.Trim();
+        await storage.SetAsync(GeminiModelKey, GeminiModel);
     }
 
     public async Task SaveAsync(string? gistId, string? token)

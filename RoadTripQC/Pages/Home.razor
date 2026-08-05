@@ -60,6 +60,8 @@ else
         </div>
     </header>
 
+    <TodayCard />
+
     @foreach (var part in Store.Data!.Parts.OrderBy(p => p.DateStart))
     {
         <div class="part-banner part-@part.Id">

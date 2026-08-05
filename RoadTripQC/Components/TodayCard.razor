@@ -1,0 +1,92 @@
+@inject TripStore Store
+
+@if (Today is { } day)
+{
+    var part = Store.PartById(day.PartId);
+    <div class="today-card @(part is not null ? $"today-part-{part.Id}" : "")">
+        <div class="today-head">
+            <span class="today-label">📍 Aujourd'hui · J@(Store.DayNumber(day))</span>
+            @if (day.Offline)
+            {
+                <span class="badge badge-offline">📵</span>
+            }
+        </div>
+        <div class="today-title">@day.Title</div>
+        @if (part is not null)
+        {
+            <div class="today-region">@part.Emoji @part.Title</div>
+        }
+
+        @{ var resas = DayReservations(day); }
+        @if (resas.Count > 0)
+        {
+            <div class="today-section-label">🔖 Réservations du jour</div>
+            <div class="today-chips">
+                @foreach (var r in resas)
+                {
+                    <a href="reservations" class="today-chip today-chip-@r.Status">
+                        @ResaStatusIcon(r.Status) @r.Name
+                    </a>
+                }
+            </div>
+        }
+
+        @{ var ideas = RegionIdeas(day); }
+        @if (ideas.Count > 0)
+        {
+            <div class="today-section-label">💡 À faire dans le coin</div>
+            <div class="today-ideas">
+                @foreach (var i in ideas)
+                {
+                    <a href="idees" class="today-idea">@CatIcon(i.Category) @i.Title</a>
+                }
+            </div>
+            @if (MoreIdeasCount(day) > 0)
+            {
+                <a href="idees" class="today-more">+ @MoreIdeasCount(day) autre@(MoreIdeasCount(day) > 1 ? "s" : "") idée@(MoreIdeasCount(day) > 1 ? "s" : "") →</a>
+            }
+        }
+    </div>
+}
+
+@code {
+    private const int MaxIdeas = 4;
+
+    private TripDay? Today
+    {
+        get
+        {
+            var t = DateOnly.FromDateTime(DateTime.Now);
+            return Store.Data?.Days.FirstOrDefault(d => d.Date == t);
+        }
+    }
+
+    private List<Reservation> DayReservations(TripDay day) =>
+        Store.Data?.Reservations
+            .Where(r => r.Date == day.Date)
+            .OrderBy(r => r.Status == "tobook" ? 0 : 1)
+            .ThenBy(r => r.Name)
+            .ToList() ?? [];
+
+    /// <summary>Idées non faites de la région du jour (limitées à l'affichage).</summary>
+    private List<Idea> RegionIdeas(TripDay day) =>
+        PendingRegionIdeas(day).Take(MaxIdeas).ToList();
+
+    private int MoreIdeasCount(TripDay day) =>
+        Math.Max(0, PendingRegionIdeas(day).Count() - MaxIdeas);
+
+    private IEnumerable<Idea> PendingRegionIdeas(TripDay day)
+    {
+        if (Store.Data is null) return [];
+        return Store.Data.Ideas
+            .Where(i => !i.IsDone && (i.PartId == day.PartId || i.PartId is null))
+            .OrderBy(i => i.Status == "planned" ? 0 : 1)
+            .ThenBy(i => i.Title);
+    }
+
+    private static string ResaStatusIcon(string s) => s switch
+    { "booked" => "✅", "paid" => "💳", _ => "🔖" };
+
+    private static string CatIcon(string c) => c switch
+    { "rando" => "🥾", "visite" => "🏛️", "resto" => "🍽️", "detente" => "🧘", "shopping" => "🛍️", _ => "✨" };
+}

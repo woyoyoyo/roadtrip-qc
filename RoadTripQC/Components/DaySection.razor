@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@inject TripStore Store
 
 <details class="day-card @(Day.Status == "free" ? "day-free" : "")" open="@IsToday" id="day-@Day.Date.ToString("yyyy-MM-dd")">
     <summary class="day-summary">
@@ -49,6 +50,24 @@
             </div>
         }
 
+        @if (DayReservations.Count > 0)
+        {
+            <div class="day-resas">
+                @foreach (var r in DayReservations)
+                {
+                    <a href="reservations" class="day-resa day-resa-@r.Status">
+                        <span class="day-resa-status">@ResaStatusIcon(r.Status)</span>
+                        <span class="day-resa-cat">@ResaCatIcon(r.Category)</span>
+                        <span class="day-resa-name">@r.Name</span>
+                        @if (r.Price.HasValue)
+                        {
+                            <span class="day-resa-price">@r.Price.Value.ToString("0") $</span>
+                        }
+                    </a>
+                }
+            </div>
+        }
+
         @if (Day.Accommodation is not null)
         {
             <AccommodationCard Accommodation="Day.Accommodation" />
@@ -56,6 +75,13 @@
         else if (Day.Status == "free")
         {
             <div class="no-accommodation">🛏️ Pas d'hébergement réservé pour cette nuit</div>
+        }
+
+        @if (RouteUrl is not null)
+        {
+            <a class="action-btn btn-route no-print" href="@RouteUrl" target="_blank" rel="noopener">
+                🧭 Itinéraire du jour (GPS)
+            </a>
         }
 
         <AddActivityForm Date="Day.Date" />
@@ -72,6 +98,43 @@
 
     private bool IsToday => Day.Date == DateOnly.FromDateTime(DateTime.Now);
     private int AlertCount => Day.Activities.Count(a => a.Alert);
+
+    /// <summary>Réservations datées de ce jour (remontées depuis la liste globale).</summary>
+    private List<Reservation> DayReservations =>
+        Store.Data?.Reservations
+            .Where(r => r.Date == Day.Date)
+            .OrderBy(r => r.Status == "tobook" ? 0 : 1)
+            .ThenBy(r => r.Name)
+            .ToList() ?? [];
+
+    private static string ResaStatusIcon(string s) => s switch
+    { "booked" => "✅", "paid" => "💳", _ => "🔖" };
+
+    private static string ResaCatIcon(string c) => c switch
+    { "hebergement" => "🛏️", "resto" => "🍽️", "activite" => "🎟️", "transport" => "🚗", _ => "📌" };
+
+    /// <summary>Étapes localisées du jour, dans l'ordre, terminant par l'hébergement.</summary>
+    private List<string> DayStops()
+    {
+        var stops = new List<string>();
+        foreach (var a in SortedActivities)
+            if (!string.IsNullOrWhiteSpace(a.Location)) stops.Add(a.Location);
+        foreach (var r in DayReservations)
+            if (!string.IsNullOrWhiteSpace(r.Location)) stops.Add(r.Location!);
+        if (Day.Accommodation is { } acc && !string.IsNullOrWhiteSpace(acc.Address))
+            stops.Add(acc.Address);
+        return stops;
+    }
+
+    /// <summary>Lien d'itinéraire GPS du jour (null s'il n'y a aucune étape localisée).</summary>
+    private string? RouteUrl
+    {
+        get
+        {
+            var url = Maps.Route(DayStops());
+            return string.IsNullOrEmpty(url) ? null : url;
+        }
+    }
 
     private IEnumerable<Activity> SortedActivities =>
         Day.Activities

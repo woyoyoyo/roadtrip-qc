@@ -1,0 +1,308 @@
+@page "/idees"
+@implements IDisposable
+@inject TripStore Store
+@inject IJSRuntime JS
+
+<PageTitle>RoadTrip QC — Idées</PageTitle>
+
+<header class="page-header">
+    <h1>💡 Idées</h1>
+    <div class="trip-sub">Des trucs à faire, selon là où on se trouve</div>
+</header>
+
+@if (Store.Data is null)
+{
+    <div class="loading-message">Chargement…</div>
+}
+else
+{
+    @* ── Filtre par région ── *@
+    @if (Store.Data.Parts.Count > 0)
+    {
+        <div class="filter-chips">
+            <button class="filter-chip @(_partFilter is null ? "is-active" : "")" @onclick="() => _partFilter = null">
+                🌍 Toutes
+            </button>
+            @foreach (var p in Store.Data.Parts.OrderBy(p => p.DateStart))
+            {
+                var pid = p.Id;
+                <button class="filter-chip @(_partFilter == pid ? "is-active" : "")" @onclick="() => _partFilter = pid">
+                    @p.Emoji @p.Title
+                </button>
+            }
+        </div>
+    }
+
+    @if (Visible.Count == 0 && !_adding)
+    {
+        <div class="empty-message">Aucune idée @(_partFilter is null ? "" : "pour cette région") pour l'instant.</div>
+    }
+
+    @foreach (var idea in PendingIdeas.OrderBy(i => i.Status == "planned" ? 0 : 1).ThenBy(i => i.Title))
+    {
+        @RenderCard(idea)
+    }
+
+    @if (DoneIdeas.Count > 0)
+    {
+        <details class="done-section">
+            <summary class="done-summary">✅ Faites (@DoneIdeas.Count)</summary>
+            @foreach (var idea in DoneIdeas.OrderBy(i => i.Title))
+            {
+                @RenderCard(idea)
+            }
+        </details>
+    }
+
+    @* ── Formulaire d'ajout ── *@
+    @if (Store.CanEdit)
+    {
+        @if (_adding)
+        {
+            <div class="add-form">
+                @IdeaFields()
+                @if (_error is not null) { <div class="sync-status sync-warn">⚠️ @_error</div> }
+                <div class="add-form-actions">
+                    <button class="action-btn btn-clear" @onclick="CancelForm" disabled="@_busy">Annuler</button>
+                    <button class="action-btn btn-refresh" @onclick="SaveAddAsync"
+                            disabled="@(_busy || string.IsNullOrWhiteSpace(_fTitle))">
+                        @(_busy ? "⏳…" : "➕ Ajouter")
+                    </button>
+                </div>
+            </div>
+        }
+        else if (_editingId is null)
+        {
+            <button class="action-btn btn-add" @onclick="StartAdd">➕ Ajouter une idée</button>
+        }
+    }
+}
+
+@code {
+    private int? _partFilter;
+
+    private List<Idea> Visible =>
+        Store.Data?.Ideas.Where(i => _partFilter is null || i.PartId == _partFilter).ToList() ?? [];
+    private List<Idea> PendingIdeas => Visible.Where(i => !i.IsDone).ToList();
+    private List<Idea> DoneIdeas    => Visible.Where(i => i.IsDone).ToList();
+
+    private bool _adding;
+    private string? _editingId;
+    private bool _busy;
+    private string? _error;
+
+    private string? _fTitle;
+    private string  _fCategory = "autre";
+    private string  _fPartId = "";
+    private string? _fLocation;
+    private string? _fLink;
+    private string? _fNotes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnChanged;
+        await Store.EnsureLoadedAsync();
+    }
+
+    public void Dispose() => Store.Changed -= OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void StartAdd()
+    {
+        _adding = true; _editingId = null; _error = null;
+        _fTitle = null; _fCategory = "autre";
+        _fPartId = _partFilter?.ToString() ?? "";
+        _fLocation = null; _fLink = null; _fNotes = null;
+    }
+
+    private void StartEdit(Idea i)
+    {
+        _editingId = i.Id; _adding = false; _error = null;
+        _fTitle = i.Title; _fCategory = i.Category;
+        _fPartId = i.PartId?.ToString() ?? "";
+        _fLocation = i.Location; _fLink = i.Link; _fNotes = i.Notes;
+        _ = InvokeAsync(async () => { await Task.Yield(); await JS.InvokeVoidAsync("roadtrip.scrollToId", $"edit-form-{i.Id}"); });
+    }
+
+    private void CancelForm() { _adding = false; _editingId = null; _error = null; }
+
+    private async Task SaveAddAsync()
+    {
+        _busy = true; _error = null;
+        var idea = BuildItem(Guid.NewGuid().ToString("N")[..10], "idea");
+        var (ok, err) = await Store.SaveAsync(data => { data.Ideas.Add(idea); return true; });
+        _busy = false;
+        if (ok) _adding = false; else _error = err;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        _busy = true; _error = null;
+        var id = _editingId!;
+        var (ok, err) = await Store.SaveAsync(data =>
+        {
+            var i = data.Ideas.FirstOrDefault(x => x.Id == id);
+            if (i is null) return false;
+            i.Title = _fTitle!.Trim();
+            i.Category = _fCategory;
+            i.PartId = int.TryParse(_fPartId, out var pid) ? pid : null;
+            i.Location = string.IsNullOrWhiteSpace(_fLocation) ? null : _fLocation.Trim();
+            i.Link = string.IsNullOrWhiteSpace(_fLink) ? null : _fLink.Trim();
+            i.Notes = string.IsNullOrWhiteSpace(_fNotes) ? null : _fNotes.Trim();
+            return true;
+        });
+        _busy = false;
+        if (ok) _editingId = null; else _error = err;
+    }
+
+    private async Task DeleteAsync(string id) =>
+        await Store.SaveAsync(data => { data.Ideas.RemoveAll(i => i.Id == id); return true; });
+
+    private async Task CycleStatusAsync(string id)
+    {
+        if (!Store.CanEdit) return;
+        await Store.SaveAsync(data =>
+        {
+            var i = data.Ideas.FirstOrDefault(x => x.Id == id);
+            if (i is null) return false;
+            i.Status = i.Status switch { "idea" => "planned", "planned" => "done", _ => "idea" };
+            return true;
+        });
+    }
+
+    private Idea BuildItem(string id, string status) => new()
+    {
+        Id = id,
+        Title = _fTitle!.Trim(),
+        Category = _fCategory,
+        PartId = int.TryParse(_fPartId, out var pid) ? pid : null,
+        Location = string.IsNullOrWhiteSpace(_fLocation) ? null : _fLocation.Trim(),
+        Link = string.IsNullOrWhiteSpace(_fLink) ? null : _fLink.Trim(),
+        Notes = string.IsNullOrWhiteSpace(_fNotes) ? null : _fNotes.Trim(),
+        Status = status
+    };
+
+    // ── Libellés ─────────────────────────────────────────────────────────────
+
+    private static string CatIcon(string c) => c switch
+    { "rando" => "🥾", "visite" => "🏛️", "resto" => "🍽️", "detente" => "🧘", "shopping" => "🛍️", _ => "✨" };
+
+    private static string StatusIcon(string s) => s switch
+    { "planned" => "📌", "done" => "✅", _ => "💡" };
+
+    private static string StatusLabel(string s) => s switch
+    { "planned" => "Prévu", "done" => "Fait", _ => "Idée" };
+
+    private static string MapsUrl(string q) =>
+        $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(q)}";
+
+    private static string DisplayLink(string url)
+    {
+        try { return new Uri(url).Host.TrimStart('w', '.'); }
+        catch { return url.Length > 40 ? url[..40] + "…" : url; }
+    }
+
+    // ── Rendu ────────────────────────────────────────────────────────────────
+
+    private RenderFragment RenderCard(Idea idea) => __builder =>
+    {
+        var id = idea.Id;
+        if (_editingId == id)
+        {
+            <div id="edit-form-@id" class="add-form edit-form">
+                @IdeaFields()
+                @if (_error is not null) { <div class="sync-status sync-warn">⚠️ @_error</div> }
+                <div class="add-form-actions">
+                    <button class="action-btn btn-clear" @onclick="CancelForm" disabled="@_busy">Annuler</button>
+                    <button class="action-btn btn-refresh" @onclick="SaveEditAsync"
+                            disabled="@(_busy || string.IsNullOrWhiteSpace(_fTitle))">
+                        @(_busy ? "⏳…" : "💾 Enregistrer")
+                    </button>
+                </div>
+            </div>
+        }
+        else
+        {
+            var part = Store.PartById(idea.PartId);
+            <div class="idea-card idea-@idea.Status">
+                <div class="idea-head">
+                    <button class="idea-status-btn" @onclick="() => CycleStatusAsync(id)"
+                            title="Idée → Prévu → Fait">@StatusIcon(idea.Status)</button>
+                    <span class="idea-cat">@CatIcon(idea.Category)</span>
+                    <span class="idea-title">@idea.Title</span>
+                    @if (Store.CanEdit)
+                    {
+                        <div class="card-actions">
+                            <button class="btn-card-icon" @onclick="() => StartEdit(idea)" title="Modifier">✏️</button>
+                            <button class="btn-card-icon" @onclick="() => DeleteAsync(id)" title="Supprimer">🗑️</button>
+                        </div>
+                    }
+                </div>
+                <div class="idea-meta">
+                    <span class="idea-chip idea-chip-status">@StatusLabel(idea.Status)</span>
+                    @if (part is not null) { <span class="idea-chip">@part.Emoji @part.Title</span> }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(idea.Location))
+                {
+                    <a href="@MapsUrl(idea.Location)" target="_blank" rel="noopener" class="idea-detail idea-link">📍 @idea.Location</a>
+                }
+                @if (!string.IsNullOrWhiteSpace(idea.Notes))
+                {
+                    <p class="idea-detail idea-notes">@idea.Notes</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(idea.Link))
+                {
+                    <a href="@idea.Link" target="_blank" rel="noopener" class="idea-detail idea-link">🔗 @DisplayLink(idea.Link)</a>
+                }
+            </div>
+        }
+    };
+
+    private RenderFragment IdeaFields() => __builder =>
+    {
+        <label class="form-field">
+            <span class="form-label">Idée *</span>
+            <input class="form-input" type="text" @bind="_fTitle"
+                   placeholder="ex : Kayak sur le fjord au coucher du soleil" autocapitalize="sentences" />
+        </label>
+        <div class="form-row-2">
+            <label class="form-field">
+                <span class="form-label">Catégorie</span>
+                <select class="form-input" @bind="_fCategory">
+                    <option value="rando">🥾 Rando</option>
+                    <option value="visite">🏛️ Visite</option>
+                    <option value="resto">🍽️ Resto</option>
+                    <option value="detente">🧘 Détente</option>
+                    <option value="shopping">🛍️ Shopping</option>
+                    <option value="autre">✨ Autre</option>
+                </select>
+            </label>
+            @if ((Store.Data?.Parts.Count ?? 0) > 0)
+            {
+                <label class="form-field">
+                    <span class="form-label">🗺️ Région</span>
+                    <select class="form-input" @bind="_fPartId">
+                        <option value="">— Partout —</option>
+                        @foreach (var p in Store.Data!.Parts.OrderBy(p => p.DateStart))
+                        {
+                            <option value="@p.Id">@p.Emoji @p.Title</option>
+                        }
+                    </select>
+                </label>
+            }
+        </div>
+        <label class="form-field">
+            <span class="form-label">📍 Lieu <span class="form-hint-inline">(optionnel)</span></span>
+            <input class="form-input" type="text" @bind="_fLocation" placeholder="ex : Parc national du Fjord-du-Saguenay" />
+        </label>
+        <label class="form-field">
+            <span class="form-label">🔗 Lien <span class="form-hint-inline">(optionnel)</span></span>
+            <input class="form-input" type="url" @bind="_fLink" placeholder="https://…" />
+        </label>
+        <label class="form-field">
+            <span class="form-label">💡 Notes <span class="form-hint-inline">(optionnel)</span></span>
+            <textarea class="form-input form-textarea" @bind="_fNotes" rows="2"
+                      placeholder="ex : Réserver la veille, prévoir 3h"></textarea>
+        </label>
+    };
+}

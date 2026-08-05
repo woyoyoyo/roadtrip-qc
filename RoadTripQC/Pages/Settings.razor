@@ -1,6 +1,7 @@
 @page "/parametres"
 @inject SettingsService Config
 @inject TripStore Store
+@inject GeminiService Gemini
 
 <PageTitle>RoadTrip QC — Paramètres</PageTitle>
 
@@ -9,27 +10,79 @@
 </header>
 
 <div class="settings-form">
-    <label class="form-field">
-        <span class="form-label">ID du Gist</span>
-        <input class="form-input" type="text" @bind="_gistId"
-               placeholder="ex : bd451c30da0d..." autocapitalize="off" autocorrect="off" spellcheck="false" />
-        <span class="form-hint">La chaîne dans l'URL du Gist (gist.github.com/toncompte/<b>ID</b>). Suffit pour lire le planning.</span>
-    </label>
 
-    <label class="form-field">
-        <span class="form-label">Token GitHub (PAT)</span>
-        <input class="form-input" type="@(_showToken ? "text" : "password")" @bind="_token"
-               placeholder="ghp_..." autocapitalize="off" autocorrect="off" spellcheck="false" />
-        <span class="form-hint">Nécessaire uniquement pour modifier le planning. Stocké sur ce téléphone, nulle part ailleurs.</span>
-    </label>
+    @* ── Raccourcis ─────────────────────────────────────────────────────────── *@
+    <div class="settings-shortcuts">
+        <a class="settings-shortcut" href="checklist">
+            <span class="settings-shortcut-icon">✅</span>
+            <span class="settings-shortcut-label">Checklist (à emporter / à préparer)</span>
+            <span class="settings-shortcut-arrow">›</span>
+        </a>
+    </div>
 
-    <label class="show-token">
-        <input type="checkbox" @bind="_showToken" /> Afficher le token
-    </label>
+    @* ── Assistant IA ───────────────────────────────────────────────────────── *@
+    <details class="config-section" open="@(!Gemini.IsConfigured)">
+        <summary class="config-section-summary">🤖 Assistant IA (Gemini)</summary>
+        <div class="config-section-body">
+            <p class="form-hint">
+                Clé API Google Gemini (gratuite sur <b>aistudio.google.com</b>).
+                Stockée uniquement sur ce téléphone.
+            </p>
+            <label class="form-field">
+                <span class="form-label">Clé Gemini</span>
+                <input class="form-input" type="@(_showGeminiKey ? "text" : "password")" @bind="_geminiKey"
+                       placeholder="AIza..." autocapitalize="off" autocorrect="off" spellcheck="false" />
+            </label>
+            <label class="show-token">
+                <input type="checkbox" @bind="_showGeminiKey" /> Afficher la clé
+            </label>
+            <label class="form-field">
+                <span class="form-label">Modèle</span>
+                <select class="form-input" @bind="_geminiModel">
+                    <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite — rapide, économique (recommandé)</option>
+                    <option value="gemini-3.5-flash">gemini-3.5-flash — plus intelligent (peut être saturé)</option>
+                </select>
+            </label>
+            <div class="add-form-actions">
+                <button class="action-btn btn-refresh" @onclick="SaveGeminiKeyAsync" disabled="@_geminiKeySaving">
+                    @(_geminiKeySaving ? "⏳…" : "💾 Enregistrer")
+                </button>
+                <button class="action-btn btn-clear" @onclick="TestGeminiKeyAsync"
+                        disabled="@(_geminiKeySaving || _geminiKeyTesting || !Gemini.IsConfigured)">
+                    @(_geminiKeyTesting ? "⏳ Test…" : "🧪 Tester")
+                </button>
+            </div>
+            @if (_geminiKeyFeedback is not null)
+            {
+                <div class="sync-status @(_geminiKeyOk ? "sync-ok" : "sync-warn")">@_geminiKeyFeedback</div>
+            }
+        </div>
+    </details>
 
-    <button class="action-btn btn-refresh" @onclick="SaveAsync" disabled="@_busy">
-        @(_busy ? "⏳ Vérification…" : "💾 Enregistrer et tester")
-    </button>
+    @* ── Accès au Gist ──────────────────────────────────────────────────────── *@
+    <details class="config-section" open="@(!Config.IsConfigured)">
+        <summary class="config-section-summary">🔧 Configuration de l'accès</summary>
+        <div class="config-section-body">
+            <label class="form-field">
+                <span class="form-label">ID du Gist</span>
+                <input class="form-input" type="text" @bind="_gistId"
+                       placeholder="ex : bd451c30da0d..." autocapitalize="off" autocorrect="off" spellcheck="false" />
+                <span class="form-hint">La chaîne dans l'URL du Gist (gist.github.com/toncompte/<b>ID</b>). Suffit pour lire le planning.</span>
+            </label>
+            <label class="form-field">
+                <span class="form-label">Token GitHub (PAT)</span>
+                <input class="form-input" type="@(_showToken ? "text" : "password")" @bind="_token"
+                       placeholder="ghp_..." autocapitalize="off" autocorrect="off" spellcheck="false" />
+                <span class="form-hint">Nécessaire uniquement pour modifier le planning. Stocké sur ce téléphone, nulle part ailleurs.</span>
+            </label>
+            <label class="show-token">
+                <input type="checkbox" @bind="_showToken" /> Afficher le token
+            </label>
+            <button class="action-btn btn-refresh" @onclick="SaveAsync" disabled="@_busy">
+                @(_busy ? "⏳ Vérification…" : "💾 Enregistrer et tester")
+            </button>
+        </div>
+    </details>
 
     @if (_feedback is not null)
     {
@@ -51,11 +104,51 @@
     private string? _feedback;
     private string _feedbackClass = "";
 
+    private string? _geminiKey;
+    private string  _geminiModel = "";
+    private bool    _showGeminiKey;
+    private bool    _geminiKeySaving;
+    private bool    _geminiKeyTesting;
+    private string? _geminiKeyFeedback;
+    private bool    _geminiKeyOk;
+
     protected override async Task OnInitializedAsync()
     {
         await Config.EnsureLoadedAsync();
         _gistId = Config.GistId;
         _token = Config.Token;
+        _geminiKey = Config.GeminiApiKey;
+        _geminiModel = Config.GeminiModel;
+    }
+
+    private async Task SaveGeminiKeyAsync()
+    {
+        _geminiKeySaving = true; _geminiKeyFeedback = null;
+        await Config.SetGeminiApiKeyAsync(_geminiKey);
+        if (!string.IsNullOrWhiteSpace(_geminiModel))
+            await Config.SetGeminiModelAsync(_geminiModel);
+        _geminiKeySaving = false;
+        _geminiKeyOk = Gemini.IsConfigured;
+        _geminiKeyFeedback = Gemini.IsConfigured
+            ? "✅ Clé enregistrée — clique 🧪 Tester pour vérifier."
+            : "🗑️ Clé supprimée.";
+    }
+
+    private async Task TestGeminiKeyAsync()
+    {
+        _geminiKeyTesting = true; _geminiKeyFeedback = null;
+        try
+        {
+            await Gemini.ChatAsync("Réponds uniquement avec le mot : OK", [], "Test de connexion.");
+            _geminiKeyOk = true;
+            _geminiKeyFeedback = $"✅ Connexion OK — modèle : {Config.GeminiModel}";
+        }
+        catch (Exception ex)
+        {
+            _geminiKeyOk = false;
+            _geminiKeyFeedback = $"⚠️ {ex.Message}";
+        }
+        finally { _geminiKeyTesting = false; }
     }
 
     private async Task SaveAsync()

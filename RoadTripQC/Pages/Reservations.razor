@@ -1,0 +1,398 @@
+@page "/reservations"
+@implements IDisposable
+@inject TripStore Store
+@inject IJSRuntime JS
+
+<PageTitle>RoadTrip QC — Réservations</PageTitle>
+
+<header class="page-header">
+    <h1>🔖 Réservations</h1>
+    <div class="trip-sub">Où on dort et tout ce qu'il faut réserver</div>
+</header>
+
+@if (Store.Data is null)
+{
+    <div class="loading-message">Chargement…</div>
+}
+else
+{
+    <div class="tab-bar">
+        <button class="tab @(_tab == Tab.ToBook ? "tab-active" : "")" @onclick="() => _tab = Tab.ToBook">
+            🔖 À réserver <span class="tab-count">@Count("tobook")</span>
+        </button>
+        <button class="tab @(_tab == Tab.Booked ? "tab-active" : "")" @onclick="() => _tab = Tab.Booked">
+            ✅ Réservé <span class="tab-count">@Count("booked")</span>
+        </button>
+        <button class="tab @(_tab == Tab.Paid ? "tab-active" : "")" @onclick="() => _tab = Tab.Paid">
+            💳 Payé <span class="tab-count">@Count("paid")</span>
+        </button>
+        <button class="tab @(_tab == Tab.All ? "tab-active" : "")" @onclick="() => _tab = Tab.All">
+            📋 Tout <span class="tab-count">@Store.Data.Reservations.Count</span>
+        </button>
+    </div>
+
+    @* ── Budget de l'onglet À réserver ── *@
+    @if (_tab == Tab.ToBook && ToBookBudget > 0)
+    {
+        <div class="budget-bar">💰 Reste à réserver : <strong>@ToBookBudget.ToString("0.00") $</strong></div>
+    }
+
+    @if (!TabList.Any() && !_addingNew)
+    {
+        <div class="empty-message">Rien ici pour l'instant.</div>
+    }
+
+    @foreach (var catGroup in ByCat)
+    {
+        <div class="cat-section">
+            <div class="cat-header">@CatIcon(catGroup.Key) @CatLabel(catGroup.Key)</div>
+            @foreach (var item in catGroup.OrderBy(r => r.Date ?? DateOnly.MaxValue).ThenBy(r => r.Name))
+            {
+                @RenderCard(item)
+            }
+        </div>
+    }
+
+    @* ── Formulaire d'ajout ── *@
+    @if (Store.CanEdit)
+    {
+        @if (_addingNew)
+        {
+            <div class="add-form">
+                @ResaFields()
+                @if (_error is not null) { <div class="sync-status sync-warn">⚠️ @_error</div> }
+                <div class="add-form-actions">
+                    <button class="action-btn btn-clear" @onclick="CancelForm" disabled="@_busy">Annuler</button>
+                    <button class="action-btn btn-refresh" @onclick="SaveAddAsync"
+                            disabled="@(_busy || string.IsNullOrWhiteSpace(_fName))">
+                        @(_busy ? "⏳…" : "➕ Ajouter")
+                    </button>
+                </div>
+            </div>
+        }
+        else if (_editingId is null)
+        {
+            <button class="action-btn btn-add" @onclick="StartAdd">➕ Ajouter une réservation</button>
+        }
+    }
+}
+
+@code {
+    private enum Tab { ToBook, Booked, Paid, All }
+    private Tab _tab = Tab.ToBook;
+
+    private bool _addingNew;
+    private string? _editingId;
+    private bool _busy;
+    private string? _error;
+
+    private string? _fName;
+    private string  _fCategory = "hebergement";
+    private string  _fStatus = "tobook";
+    private DateTime? _fDate;
+    private string  _fPartId = "";
+    private string? _fLocation;
+    private string? _fPrice;
+    private string? _fLink;
+    private string? _fBookingRef;
+    private string  _fContactId = "";
+    private string? _fNotes;
+
+    private int Count(string status) => Store.Data?.Reservations.Count(r => r.Status == status) ?? 0;
+
+    private IEnumerable<Reservation> TabItems => _tab switch
+    {
+        Tab.ToBook => Store.Data?.Reservations.Where(r => r.Status == "tobook") ?? [],
+        Tab.Booked => Store.Data?.Reservations.Where(r => r.Status == "booked") ?? [],
+        Tab.Paid   => Store.Data?.Reservations.Where(r => r.Status == "paid")   ?? [],
+        _          => Store.Data?.Reservations ?? []
+    };
+
+    private List<Reservation> TabList => TabItems.ToList();
+
+    private IEnumerable<IGrouping<string, Reservation>> ByCat =>
+        TabList.GroupBy(r => r.Category).OrderBy(g => CatOrder(g.Key));
+
+    private decimal ToBookBudget =>
+        Store.Data?.Reservations.Where(r => r.Status == "tobook" && r.Price.HasValue).Sum(r => r.Price!.Value) ?? 0m;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnChanged;
+        await Store.EnsureLoadedAsync();
+    }
+
+    public void Dispose() => Store.Changed -= OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void StartAdd()
+    {
+        _addingNew = true; _editingId = null; _error = null;
+        _fName = null; _fCategory = "hebergement"; _fStatus = StatusForTab();
+        _fDate = null; _fPartId = ""; _fLocation = null; _fPrice = null;
+        _fLink = null; _fBookingRef = null; _fContactId = ""; _fNotes = null;
+    }
+
+    private void StartEdit(Reservation r)
+    {
+        _editingId = r.Id; _addingNew = false; _error = null;
+        _fName = r.Name; _fCategory = r.Category; _fStatus = r.Status;
+        _fDate = r.Date?.ToDateTime(TimeOnly.MinValue);
+        _fPartId = r.PartId?.ToString() ?? "";
+        _fLocation = r.Location; _fPrice = r.Price?.ToString("0.00");
+        _fLink = r.Link; _fBookingRef = r.BookingRef;
+        _fContactId = r.ContactId ?? ""; _fNotes = r.Notes;
+        _ = InvokeAsync(async () => { await Task.Yield(); await JS.InvokeVoidAsync("roadtrip.scrollToId", $"edit-form-{r.Id}"); });
+    }
+
+    private void CancelForm() { _addingNew = false; _editingId = null; _error = null; }
+
+    private string StatusForTab() => _tab switch
+    {
+        Tab.Booked => "booked",
+        Tab.Paid   => "paid",
+        _          => "tobook"
+    };
+
+    private async Task SaveAddAsync()
+    {
+        _busy = true; _error = null;
+        var r = BuildItem(Guid.NewGuid().ToString("N")[..10]);
+        var (ok, err) = await Store.SaveAsync(data => { data.Reservations.Add(r); return true; });
+        _busy = false;
+        if (ok) _addingNew = false; else _error = err;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        _busy = true; _error = null;
+        var id = _editingId!;
+        var r = BuildItem(id);
+        var (ok, err) = await Store.SaveAsync(data =>
+        {
+            var idx = data.Reservations.FindIndex(x => x.Id == id);
+            if (idx < 0) return false;
+            data.Reservations[idx] = r;
+            return true;
+        });
+        _busy = false;
+        if (ok) _editingId = null; else _error = err;
+    }
+
+    private async Task DeleteAsync(string id) =>
+        await Store.SaveAsync(data => { data.Reservations.RemoveAll(r => r.Id == id); return true; });
+
+    private async Task CycleStatusAsync(string id)
+    {
+        if (!Store.CanEdit) return;
+        await Store.SaveAsync(data =>
+        {
+            var r = data.Reservations.FirstOrDefault(x => x.Id == id);
+            if (r is null) return false;
+            r.Status = r.Status switch { "tobook" => "booked", "booked" => "paid", _ => "tobook" };
+            return true;
+        });
+    }
+
+    private Reservation BuildItem(string id)
+    {
+        decimal? price = decimal.TryParse(_fPrice?.Replace(",", "."),
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : null;
+        return new Reservation
+        {
+            Id         = id,
+            Name       = _fName!.Trim(),
+            Category   = _fCategory,
+            Status     = _fStatus,
+            Date       = _fDate.HasValue ? DateOnly.FromDateTime(_fDate.Value) : null,
+            PartId     = int.TryParse(_fPartId, out var pid) ? pid : null,
+            Location   = string.IsNullOrWhiteSpace(_fLocation) ? null : _fLocation.Trim(),
+            Price      = price,
+            Link       = string.IsNullOrWhiteSpace(_fLink) ? null : _fLink.Trim(),
+            BookingRef = string.IsNullOrWhiteSpace(_fBookingRef) ? null : _fBookingRef.Trim(),
+            ContactId  = string.IsNullOrWhiteSpace(_fContactId) ? null : _fContactId,
+            Notes      = string.IsNullOrWhiteSpace(_fNotes) ? null : _fNotes.Trim()
+        };
+    }
+
+    // ── Libellés ─────────────────────────────────────────────────────────────
+
+    private static int CatOrder(string c) => c switch
+    { "hebergement" => 0, "transport" => 1, "activite" => 2, "resto" => 3, _ => 4 };
+
+    private static string CatIcon(string c) => c switch
+    { "hebergement" => "🛏️", "resto" => "🍽️", "activite" => "🎟️", "transport" => "🚗", _ => "📌" };
+
+    private static string CatLabel(string c) => c switch
+    { "hebergement" => "Hébergement", "resto" => "Resto", "activite" => "Activité", "transport" => "Transport", _ => "Autre" };
+
+    private static string StatusIcon(string s) => s switch
+    { "booked" => "✅", "paid" => "💳", _ => "🔖" };
+
+    private static string MapsUrl(string q) =>
+        $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(q)}";
+
+    private static string DisplayLink(string url)
+    {
+        try { return new Uri(url).Host.TrimStart('w', '.'); }
+        catch { return url.Length > 40 ? url[..40] + "…" : url; }
+    }
+
+    // ── Rendu ────────────────────────────────────────────────────────────────
+
+    private RenderFragment RenderCard(Reservation item) => __builder =>
+    {
+        var id = item.Id;
+        if (_editingId == id)
+        {
+            <div id="edit-form-@id" class="add-form edit-form">
+                @ResaFields()
+                @if (_error is not null) { <div class="sync-status sync-warn">⚠️ @_error</div> }
+                <div class="add-form-actions">
+                    <button class="action-btn btn-clear" @onclick="CancelForm" disabled="@_busy">Annuler</button>
+                    <button class="action-btn btn-refresh" @onclick="SaveEditAsync"
+                            disabled="@(_busy || string.IsNullOrWhiteSpace(_fName))">
+                        @(_busy ? "⏳…" : "💾 Enregistrer")
+                    </button>
+                </div>
+            </div>
+        }
+        else
+        {
+            var part = Store.PartById(item.PartId);
+            var contact = Store.ContactById(item.ContactId);
+            <div class="resa-card resa-@item.Status">
+                <div class="resa-head">
+                    <button class="resa-status-btn" @onclick="() => CycleStatusAsync(id)" title="Changer le statut">
+                        @StatusIcon(item.Status)
+                    </button>
+                    <span class="resa-name">@item.Name</span>
+                    @if (Store.CanEdit)
+                    {
+                        <div class="card-actions">
+                            <button class="btn-card-icon" @onclick="() => StartEdit(item)" title="Modifier">✏️</button>
+                            <button class="btn-card-icon" @onclick="() => DeleteAsync(id)" title="Supprimer">🗑️</button>
+                        </div>
+                    }
+                </div>
+                <div class="resa-meta">
+                    @if (item.Date.HasValue) { <span class="resa-chip">📅 @FrenchDate.Short(item.Date.Value)</span> }
+                    @if (part is not null) { <span class="resa-chip">@part.Emoji @part.Title</span> }
+                    @if (item.Price.HasValue) { <span class="resa-chip resa-price">💰 @item.Price.Value.ToString("0.00") $</span> }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(item.BookingRef))
+                {
+                    <div class="resa-detail">🎫 Réf : <strong>@item.BookingRef</strong></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(item.Location))
+                {
+                    <a href="@MapsUrl(item.Location)" target="_blank" rel="noopener" class="resa-detail resa-link">📍 @item.Location</a>
+                }
+                @if (contact is not null)
+                {
+                    <div class="resa-detail">
+                        📇 @contact.Name
+                        @if (!string.IsNullOrWhiteSpace(contact.Phone))
+                        {
+                            <a href="tel:@contact.Phone" class="resa-phone">@contact.Phone</a>
+                        }
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(item.Notes))
+                {
+                    <p class="resa-detail resa-notes">💡 @item.Notes</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(item.Link))
+                {
+                    <a href="@item.Link" target="_blank" rel="noopener" class="resa-detail resa-link">🔗 @DisplayLink(item.Link)</a>
+                }
+            </div>
+        }
+    };
+
+    private RenderFragment ResaFields() => __builder =>
+    {
+        <label class="form-field">
+            <span class="form-label">Nom *</span>
+            <input class="form-input" type="text" @bind="_fName"
+                   placeholder="ex : Chalet du Fjord" autocapitalize="sentences" />
+        </label>
+        <div class="form-row-2">
+            <label class="form-field">
+                <span class="form-label">Catégorie</span>
+                <select class="form-input" @bind="_fCategory">
+                    <option value="hebergement">🛏️ Hébergement</option>
+                    <option value="resto">🍽️ Resto</option>
+                    <option value="activite">🎟️ Activité</option>
+                    <option value="transport">🚗 Transport</option>
+                    <option value="autre">📌 Autre</option>
+                </select>
+            </label>
+            <label class="form-field">
+                <span class="form-label">📅 Date</span>
+                <input class="form-input" type="date" @bind="_fDate" />
+            </label>
+        </div>
+        <div class="form-field">
+            <span class="form-label">Statut</span>
+            <div class="status-checks">
+                <button type="button" class="status-opt @(_fStatus == "tobook" ? "is-checked" : "")"
+                        @onclick='() => _fStatus = "tobook"'>🔖 À réserver</button>
+                <button type="button" class="status-opt @(_fStatus == "booked" ? "is-checked" : "")"
+                        @onclick='() => _fStatus = "booked"'>✅ Réservé</button>
+                <button type="button" class="status-opt @(_fStatus == "paid" ? "is-checked" : "")"
+                        @onclick='() => _fStatus = "paid"'>💳 Payé</button>
+            </div>
+        </div>
+        @if ((Store.Data?.Parts.Count ?? 0) > 0)
+        {
+            <label class="form-field">
+                <span class="form-label">🗺️ Étape / région</span>
+                <select class="form-input" @bind="_fPartId">
+                    <option value="">— Aucune —</option>
+                    @foreach (var p in Store.Data!.Parts.OrderBy(p => p.DateStart))
+                    {
+                        <option value="@p.Id">@p.Emoji @p.Title</option>
+                    }
+                </select>
+            </label>
+        }
+        <div class="form-row-2">
+            <label class="form-field">
+                <span class="form-label">💰 Prix ($) <span class="form-hint-inline">(optionnel)</span></span>
+                <input class="form-input" type="text" inputmode="decimal" @bind="_fPrice" placeholder="ex : 129.00" />
+            </label>
+            <label class="form-field">
+                <span class="form-label">🎫 Réf. <span class="form-hint-inline">(optionnel)</span></span>
+                <input class="form-input" type="text" @bind="_fBookingRef" placeholder="ex : ABC123" />
+            </label>
+        </div>
+        <label class="form-field">
+            <span class="form-label">📍 Adresse / lieu <span class="form-hint-inline">(optionnel)</span></span>
+            <input class="form-input" type="text" @bind="_fLocation" placeholder="ex : 12 rue Principale, Saguenay" />
+        </label>
+        @if ((Store.Data?.Contacts.Count ?? 0) > 0)
+        {
+            <label class="form-field">
+                <span class="form-label">📇 Contact lié <span class="form-hint-inline">(optionnel)</span></span>
+                <select class="form-input" @bind="_fContactId">
+                    <option value="">— Aucun —</option>
+                    @foreach (var c in Store.Data!.Contacts)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+            </label>
+        }
+        <label class="form-field">
+            <span class="form-label">🔗 Lien <span class="form-hint-inline">(optionnel)</span></span>
+            <input class="form-input" type="url" @bind="_fLink" placeholder="https://…" />
+        </label>
+        <label class="form-field">
+            <span class="form-label">💡 Notes <span class="form-hint-inline">(optionnel)</span></span>
+            <textarea class="form-input form-textarea" @bind="_fNotes" rows="2"
+                      placeholder="ex : Arrivée après 16h, code portail 1234"></textarea>
+        </label>
+    };
+}

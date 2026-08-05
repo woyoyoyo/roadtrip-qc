@@ -1,0 +1,383 @@
+@page "/assistant"
+@implements IDisposable
+@inject GeminiService Gemini
+@inject TripStore Store
+@inject SettingsService Config
+@inject IJSRuntime JS
+
+<PageTitle>RoadTrip QC — Assistant IA</PageTitle>
+
+@if (!Gemini.IsConfigured)
+{
+    <div class="chat-unconfigured">
+        <div class="chat-unconfigured-icon">🤖</div>
+        <p>L'assistant IA n'est pas encore configuré.</p>
+        <p>Ajoute ta clé Gemini dans les <a href="parametres">Paramètres</a>.</p>
+    </div>
+}
+else if (Store.Data is null)
+{
+    <div class="loading-message">Chargement du planning…</div>
+}
+else
+{
+    <div class="chat-wrap">
+        <div class="chat-messages" @ref="_msgContainer">
+
+            @if (_messages.Count == 0)
+            {
+                <div class="chat-intro">
+                    <div class="chat-intro-icon">💬</div>
+                    <p>Salut ! Je peux ajouter une réservation, une idée ou une activité à ton road trip.</p>
+                    <p class="chat-intro-hint">Essaie : <em>« Réserve un chalet à Saguenay pour le 12 août, 130$ »</em></p>
+                </div>
+            }
+
+            @foreach (var msg in _messages)
+            {
+                <div class="chat-row @(msg.IsUser ? "chat-row-user" : "chat-row-ai")">
+                    @if (!msg.IsUser) { <div class="chat-avatar">🤖</div> }
+                    <div class="chat-bubble @(msg.IsUser ? "chat-bubble-user" : msg.IsAction ? "chat-bubble-action" : "chat-bubble-ai")">
+                        @msg.Text
+                    </div>
+                </div>
+            }
+
+            @if (_pendingAction is not null)
+            {
+                <div class="chat-row chat-row-ai">
+                    <div class="chat-avatar">🤖</div>
+                    <div class="chat-confirm-card">
+                        <div class="chat-confirm-title">@ConfirmTitle</div>
+                        @foreach (var (label, value) in ConfirmFields)
+                        {
+                            <div class="chat-confirm-field"><b>@label</b> : @value</div>
+                        }
+                        <div class="chat-confirm-actions">
+                            <button class="chat-confirm-ok" @onclick="ConfirmActionAsync" disabled="@_confirmBusy">
+                                @(_confirmBusy ? "⏳…" : "✅ Confirmer")
+                            </button>
+                            <button class="chat-confirm-cancel" @onclick="CancelAction" disabled="@_confirmBusy">
+                                ❌ Annuler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (_thinking)
+            {
+                <div class="chat-row chat-row-ai">
+                    <div class="chat-avatar">🤖</div>
+                    <div class="chat-bubble chat-bubble-ai chat-thinking"><span></span><span></span><span></span></div>
+                </div>
+            }
+
+            @if (_error is not null) { <div class="chat-error">⚠️ @_error</div> }
+        </div>
+
+        <div class="chat-input-row">
+            <button class="chat-btn-voice @(_recording ? "chat-btn-recording" : "")"
+                    @onclick="ToggleVoiceAsync" disabled="@_thinking"
+                    title="@(_recording ? "Arrêter" : "Parler")">
+                @(_recording ? "⏹" : "🎤")
+            </button>
+            <input class="chat-input" @bind="_draft" @bind:event="oninput"
+                   @onkeydown="HandleKeyAsync"
+                   placeholder="@(_recording ? "À l'écoute…" : "Écris ou utilise le micro…")"
+                   disabled="@(_thinking || _recording)" @ref="_inputRef" />
+            <button class="chat-btn-send" @onclick="SendAsync"
+                    disabled="@(string.IsNullOrWhiteSpace(_draft) || _thinking || _recording)">➤</button>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly List<ChatMessage> _messages = [];
+    private string  _draft = "";
+    private bool    _thinking;
+    private bool    _recording;
+    private string? _error;
+    private DotNetObjectReference<Assistant>? _dotnetRef;
+    private ElementReference _msgContainer;
+    private ElementReference _inputRef;
+
+    private AssistantAction? _pendingAction;
+    private bool _confirmBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnStoreChanged;
+        await Config.EnsureLoadedAsync();
+        await Store.EnsureLoadedAsync();
+        _dotnetRef = DotNetObjectReference.Create(this);
+    }
+
+    public void Dispose()
+    {
+        Store.Changed -= OnStoreChanged;
+        _dotnetRef?.Dispose();
+    }
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    // ── Envoi ──────────────────────────────────────────────────────────────────
+
+    private async Task SendAsync()
+    {
+        var text = _draft.Trim();
+        if (string.IsNullOrEmpty(text) || _thinking) return;
+        _draft = ""; _error = null;
+        await SubmitAsync(text);
+    }
+
+    private async Task HandleKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_draft))
+            await SendAsync();
+    }
+
+    private async Task SubmitAsync(string userText)
+    {
+        _messages.Add(new ChatMessage(userText, IsUser: true));
+        _thinking = true;
+        StateHasChanged();
+        await ScrollToBottomAsync();
+
+        try
+        {
+            var systemPrompt = GeminiService.BuildSystemPrompt(
+                Store.Data!, DateOnly.FromDateTime(DateTime.Now).ToString("yyyy-MM-dd"));
+
+            var history = _messages.SkipLast(1).Where(m => !m.IsAction).ToList();
+
+            var raw = await Gemini.ChatAsync(systemPrompt, history, userText);
+            var (displayText, action) = GeminiService.ParseResponse(raw);
+
+            if (!string.IsNullOrWhiteSpace(displayText))
+                _messages.Add(new ChatMessage(displayText, IsUser: false));
+
+            if (action is not null && action.Action is "add_reservation" or "add_idea" or "add_activity")
+                _pendingAction = action;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _thinking = false;
+            StateHasChanged();
+            await ScrollToBottomAsync();
+        }
+    }
+
+    // ── Carte de confirmation ──────────────────────────────────────────────────
+
+    private string ConfirmTitle => _pendingAction?.Action switch
+    {
+        "add_reservation" => "🔖 Confirmer la réservation ?",
+        "add_idea"        => "💡 Confirmer l'idée ?",
+        _                 => "🗓️ Confirmer l'activité ?"
+    };
+
+    private IEnumerable<(string, string)> ConfirmFields
+    {
+        get
+        {
+            var a = _pendingAction!;
+            yield return ("Titre", a.Title ?? "—");
+            if (a.Action == "add_reservation")
+            {
+                yield return ("Catégorie", ResaCatLabel(a.Category));
+                yield return ("Statut", ResaStatusLabel(a.Status));
+                if (DateOnly.TryParse(a.Date, out var d)) yield return ("Date", FrenchDate.Short(d));
+                if (Store.PartById(a.PartId) is { } p) yield return ("Région", $"{p.Emoji} {p.Title}");
+                if (!string.IsNullOrWhiteSpace(a.Price) && a.Price != "null") yield return ("Prix", $"{a.Price} $");
+            }
+            else if (a.Action == "add_idea")
+            {
+                yield return ("Catégorie", IdeaCatLabel(a.Category));
+                if (Store.PartById(a.PartId) is { } p) yield return ("Région", $"{p.Emoji} {p.Title}");
+            }
+            else
+            {
+                if (DateOnly.TryParse(a.Date, out var d))
+                {
+                    var day = Store.Data?.Days.FirstOrDefault(x => x.Date == d);
+                    yield return ("Jour", day is not null ? $"{FrenchDate.Short(d)} — {day.Title}" : FrenchDate.Short(d));
+                }
+                if (!string.IsNullOrWhiteSpace(a.Time) && a.Time != "null") yield return ("Heure", a.Time!);
+            }
+            if (!string.IsNullOrWhiteSpace(a.Location) && a.Location != "null") yield return ("Lieu", a.Location!);
+            if (!string.IsNullOrWhiteSpace(a.Notes) && a.Notes != "null") yield return ("Notes", a.Notes!);
+        }
+    }
+
+    private async Task ConfirmActionAsync()
+    {
+        if (_pendingAction is null) return;
+        _confirmBusy = true;
+        var action = _pendingAction;
+        _pendingAction = null;
+        switch (action.Action)
+        {
+            case "add_reservation": await ExecuteAddReservationAsync(action); break;
+            case "add_idea":        await ExecuteAddIdeaAsync(action); break;
+            default:                await ExecuteAddActivityAsync(action); break;
+        }
+        _confirmBusy = false;
+    }
+
+    private void CancelAction()
+    {
+        _pendingAction = null;
+        _messages.Add(new ChatMessage("Annulé.", IsUser: false, IsAction: true));
+    }
+
+    private async Task ExecuteAddReservationAsync(AssistantAction a)
+    {
+        if (!Store.CanEdit) { AddSystem("⚠️ Mode lecture seule — impossible d'ajouter une réservation."); return; }
+
+        decimal? price = decimal.TryParse((a.Price ?? "").Replace(",", "."),
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : null;
+
+        var resa = new Reservation
+        {
+            Id         = $"r-{Guid.NewGuid():N}"[..12],
+            Name       = a.Title?.Trim() ?? "Réservation sans nom",
+            Category   = a.Category is "resto" or "activite" or "transport" or "autre" ? a.Category : "hebergement",
+            Status     = a.Status is "booked" or "paid" ? a.Status : "tobook",
+            Date       = DateOnly.TryParse(a.Date, out var d) ? d : null,
+            PartId     = a.PartId,
+            Location   = Clean(a.Location),
+            Link       = Clean(a.Link),
+            BookingRef = Clean(a.BookingRef),
+            Notes      = Clean(a.Notes),
+            Price      = price
+        };
+
+        var (ok, error) = await Store.SaveAsync(data => { data.Reservations.Add(resa); return true; });
+        AddSystem(ok
+            ? $"✅ Réservation ajoutée : « {resa.Name} » ({ResaStatusLabel(resa.Status)})."
+            : $"⚠️ Impossible d'enregistrer : {error}");
+    }
+
+    private async Task ExecuteAddIdeaAsync(AssistantAction a)
+    {
+        if (!Store.CanEdit) { AddSystem("⚠️ Mode lecture seule — impossible d'ajouter une idée."); return; }
+
+        var idea = new Idea
+        {
+            Id       = $"i-{Guid.NewGuid():N}"[..12],
+            Title    = a.Title?.Trim() ?? "Idée sans titre",
+            Category = a.Category is "rando" or "visite" or "resto" or "detente" or "shopping" ? a.Category : "autre",
+            PartId   = a.PartId,
+            Location = Clean(a.Location),
+            Link     = Clean(a.Link),
+            Notes    = Clean(a.Notes),
+            Status   = "idea"
+        };
+
+        var (ok, error) = await Store.SaveAsync(data => { data.Ideas.Add(idea); return true; });
+        var region = Store.PartById(idea.PartId) is { } part ? $" ({part.Title})" : "";
+        AddSystem(ok
+            ? $"✅ Idée ajoutée : « {idea.Title} »{region}."
+            : $"⚠️ Impossible d'enregistrer : {error}");
+    }
+
+    private async Task ExecuteAddActivityAsync(AssistantAction a)
+    {
+        if (!Store.CanEdit) { AddSystem("⚠️ Mode lecture seule — impossible d'ajouter une activité."); return; }
+        if (!DateOnly.TryParse(a.Date, out var date)) { AddSystem("⚠️ Date invalide, réessaie."); return; }
+
+        var time = string.IsNullOrWhiteSpace(a.Time) || a.Time == "null" ? null : a.Time;
+        var activity = new Activity
+        {
+            Id          = $"a-{Guid.NewGuid():N}"[..12],
+            Title       = a.Title?.Trim() ?? "Activité sans titre",
+            Time        = time,
+            Type        = a.Type is "transport" or "activite" or "resto" or "hebergement" or "alerte" ? a.Type : "note",
+            Description = Clean(a.Notes) ?? "",
+            Location    = Clean(a.Location) ?? "",
+            Status      = "suggestion"
+        };
+
+        var (ok, error) = await Store.SaveAsync(data =>
+        {
+            var day = data.Days.FirstOrDefault(x => x.Date == date);
+            if (day is null) return false;
+            day.Activities.Add(activity);
+            return true;
+        });
+
+        AddSystem(ok
+            ? $"✅ Activité ajoutée : « {activity.Title} »{(time is not null ? $" à {time}" : "")} le {FrenchDate.Short(date)}."
+            : $"⚠️ Impossible d'enregistrer : {error ?? "jour introuvable dans le planning."}");
+    }
+
+    private void AddSystem(string text) => _messages.Add(new ChatMessage(text, IsUser: false, IsAction: true));
+
+    private static string? Clean(string? s) =>
+        string.IsNullOrWhiteSpace(s) || s == "null" ? null : s.Trim();
+
+    private static string ResaCatLabel(string? c) => c switch
+    { "resto" => "🍽️ Resto", "activite" => "🎟️ Activité", "transport" => "🚗 Transport", "autre" => "📌 Autre", _ => "🛏️ Hébergement" };
+
+    private static string ResaStatusLabel(string? s) => s switch
+    { "booked" => "✅ Réservé", "paid" => "💳 Payé", _ => "🔖 À réserver" };
+
+    private static string IdeaCatLabel(string? c) => c switch
+    { "rando" => "🥾 Rando", "visite" => "🏛️ Visite", "resto" => "🍽️ Resto", "detente" => "🧘 Détente", "shopping" => "🛍️ Shopping", _ => "✨ Autre" };
+
+    // ── Reconnaissance vocale ──────────────────────────────────────────────────
+
+    private async Task ToggleVoiceAsync()
+    {
+        if (_recording) { _recording = false; return; }
+        _recording = true; _error = null;
+        StateHasChanged();
+        try
+        {
+            var started = await JS.InvokeAsync<bool>("roadtrip.startSpeech", _dotnetRef!);
+            if (!started)
+            {
+                _error = "La reconnaissance vocale n'est pas supportée sur ce navigateur.";
+                _recording = false;
+            }
+        }
+        catch { _recording = false; }
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechResult(string transcript)
+    {
+        _recording = false; _draft = "";
+        StateHasChanged();
+        await SubmitAsync(transcript);
+    }
+
+    [JSInvokable]
+    public void OnSpeechEnd()
+    {
+        _recording = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnSpeechError(string errorCode)
+    {
+        _recording = false;
+        _error = errorCode == "not-allowed"
+            ? "Microphone non autorisé — vérifie les permissions du navigateur."
+            : $"Erreur micro : {errorCode}";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        try { await JS.InvokeVoidAsync("roadtrip.scrollToBottom", _msgContainer); }
+        catch { }
+    }
+}

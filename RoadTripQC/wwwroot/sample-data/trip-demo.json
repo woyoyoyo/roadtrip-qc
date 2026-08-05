@@ -65,5 +65,21 @@
         { "id": "d-6", "time": "11:00", "type": "alerte", "title": "Check-out avant 11h", "description": "Les alertes ressortent en rouge", "location": "", "mapUrl": "", "websiteUrl": "", "phone": "", "bookingRef": "", "price": "", "alert": true, "status": "confirme" }
       ]
     }
+  ],
+  "reservations": [
+    { "id": "r-01", "name": "Studio d'exemple — Montréal", "category": "hebergement", "status": "paid", "date": "2026-08-27", "partId": 1, "location": "123 Rue Exemple, Montréal", "notes": "2 nuits, entrée autonome", "link": "https://example.com", "bookingRef": "DEMO12345", "contactId": "ct-01", "price": 180.00 },
+    { "id": "r-02", "name": "Chalet du Fjord", "category": "hebergement", "status": "booked", "date": "2026-08-29", "partId": 2, "location": "Saguenay", "notes": null, "link": null, "bookingRef": "FJORD-77", "contactId": "ct-02", "price": 145.00 },
+    { "id": "r-03", "name": "Croisière sur le fjord", "category": "activite", "status": "tobook", "date": "2026-08-29", "partId": 2, "location": null, "notes": "Vérifier la météo avant de réserver", "link": "https://example.com", "bookingRef": null, "contactId": null, "price": 77.00 },
+    { "id": "r-04", "name": "Location de voiture", "category": "transport", "status": "tobook", "date": "2026-08-27", "partId": 1, "location": "Aéroport YUL", "notes": "Prendre l'assurance", "link": null, "bookingRef": null, "contactId": null, "price": 320.00 }
+  ],
+  "ideas": [
+    { "id": "i-01", "title": "Flâner dans le Vieux-Montréal", "category": "visite", "partId": 1, "location": "Vieux-Montréal", "notes": "Tôt le matin pour éviter la foule", "link": null, "status": "planned" },
+    { "id": "i-02", "title": "Poutine chez un bon casse-croûte", "category": "resto", "partId": 1, "location": null, "notes": null, "link": null, "status": "idea" },
+    { "id": "i-03", "title": "Rando au parc national du Fjord-du-Saguenay", "category": "rando", "partId": 2, "location": "Rivière-Éternité", "notes": "Sentier de la Statue, ~3h", "link": "https://example.com", "status": "idea" },
+    { "id": "i-04", "title": "Observer les baleines à Tadoussac", "category": "detente", "partId": 2, "location": "Tadoussac", "notes": null, "link": null, "status": "done" }
+  ],
+  "contacts": [
+    { "id": "ct-01", "name": "Studio d'exemple", "contactPerson": "Hôte Démo", "phone": "+1 555-000-0000", "address": "123 Rue Exemple, Montréal", "notes": "Serrure numérique, code envoyé la veille", "links": ["https://example.com"] },
+    { "id": "ct-02", "name": "Chalet du Fjord", "contactPerson": "Marc", "phone": "+1 418-555-1234", "address": "Saguenay", "notes": "Check-in après 16h", "links": [] }
   ]
 }

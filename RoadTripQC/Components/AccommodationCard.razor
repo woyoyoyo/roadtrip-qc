@@ -42,7 +42,11 @@
     </div>
 
     <div class="activity-actions">
-        @if (!string.IsNullOrWhiteSpace(Accommodation.MapUrl))
+        @if (!string.IsNullOrWhiteSpace(Accommodation.Address))
+        {
+            <a class="action-btn btn-map" href="@Maps.Directions(Accommodation.Address)" target="_blank" rel="noopener">🧭 Y aller</a>
+        }
+        else if (!string.IsNullOrWhiteSpace(Accommodation.MapUrl))
         {
             <a class="action-btn btn-map" href="@Accommodation.MapUrl" target="_blank" rel="noopener">🗺️ Maps</a>
         }

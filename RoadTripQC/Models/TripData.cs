@@ -7,6 +7,15 @@ public class TripData
     public List<ChecklistItem> Checklist { get; set; } = [];
     public List<TripPart> Parts { get; set; } = [];
     public List<TripDay> Days { get; set; } = [];
+
+    /// <summary>Réservations à suivre (hébergements, restos, activités, transport).</summary>
+    public List<Reservation> Reservations { get; set; } = [];
+
+    /// <summary>Idées de trucs à faire, filtrables par étape/région.</summary>
+    public List<Idea> Ideas { get; set; } = [];
+
+    /// <summary>Contacts utiles (hôtes, loueurs, restos, guides…).</summary>
+    public List<Contact> Contacts { get; set; } = [];
 }
 
 public class TripInfo
@@ -97,4 +106,78 @@ public class Activity
 
     /// <summary>confirme | suggestion | a-reserver</summary>
     public string Status { get; set; } = "confirme";
+}
+
+/// <summary>
+/// Une réservation à suivre : où on dort, un resto, une activité à booker, un transport.
+/// Transposition du "matériel" du planning mariage (statut + budget).
+/// </summary>
+public class Reservation
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+
+    /// <summary>hebergement | resto | activite | transport | autre</summary>
+    public string Category { get; set; } = "hebergement";
+
+    /// <summary>tobook (à réserver) | booked (réservé) | paid (payé/confirmé)</summary>
+    public string Status { get; set; } = "tobook";
+
+    /// <summary>Date concernée (nuit, réservation) — optionnelle.</summary>
+    public DateOnly? Date { get; set; }
+
+    /// <summary>Étape/région du voyage (TripPart.Id) — optionnelle.</summary>
+    public int? PartId { get; set; }
+
+    public string? Location { get; set; }
+    public string? Notes { get; set; }
+
+    /// <summary>Lien de réservation (Booking, Airbnb, site…).</summary>
+    public string? Link { get; set; }
+
+    /// <summary>Numéro / référence de réservation.</summary>
+    public string? BookingRef { get; set; }
+
+    /// <summary>Contact lié (TripData.Contacts).</summary>
+    public string? ContactId { get; set; }
+
+    /// <summary>Prix estimé (CAD).</summary>
+    public decimal? Price { get; set; }
+}
+
+/// <summary>
+/// Une idée de truc à faire, rattachable à une étape/région pour la retrouver
+/// "en fonction de là où on se trouve". Transposition des todos du mariage.
+/// </summary>
+public class Idea
+{
+    public string Id { get; set; } = "";
+    public string Title { get; set; } = "";
+
+    /// <summary>rando | visite | resto | detente | shopping | autre</summary>
+    public string Category { get; set; } = "autre";
+
+    /// <summary>Étape/région où l'idée est pertinente (TripPart.Id) — optionnelle.</summary>
+    public int? PartId { get; set; }
+
+    public string? Location { get; set; }
+    public string? Notes { get; set; }
+    public string? Link { get; set; }
+
+    /// <summary>idea (idée) | planned (prévu) | done (fait)</summary>
+    public string Status { get; set; } = "idea";
+
+    public bool IsDone => Status == "done";
+}
+
+/// <summary>Contact utile : hôte Airbnb, loueur de voiture, resto, guide…</summary>
+public class Contact
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";          // ex : "Chalet du Fjord"
+    public string? ContactPerson { get; set; }      // ex : "Marc"
+    public string? Phone { get; set; }
+    public string? Address { get; set; }
+    public string? Notes { get; set; }
+    public List<string> Links { get; set; } = [];
 }
