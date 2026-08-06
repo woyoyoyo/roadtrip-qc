@@ -2,6 +2,7 @@
 @inject SettingsService Config
 @inject TripStore Store
 @inject GeminiService Gemini
+@inject IJSRuntime JS
 
 <PageTitle>RoadTrip QC — Paramètres</PageTitle>
 
@@ -88,6 +89,10 @@
     {
         <div class="sync-status @_feedbackClass">@_feedback</div>
     }
+
+    <button class="action-btn btn-refresh" @onclick="HardRefreshAsync" disabled="@_busy">
+        🔄 Forcer la mise à jour de l'app
+    </button>
 
     <button class="action-btn btn-clear" @onclick="ClearAsync" disabled="@_busy">
         🗑️ Effacer la configuration
@@ -177,6 +182,12 @@
         }
 
         _busy = false;
+    }
+
+    private async Task HardRefreshAsync()
+    {
+        _busy = true;
+        await JS.InvokeVoidAsync("roadtrip.hardRefresh");
     }
 
     private async Task ClearAsync()
